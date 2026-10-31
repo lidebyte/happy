@@ -150,7 +150,8 @@ class BrowserProxy(parent: CoroutineScope) {
     }
 
     private fun start() {
-        val socket = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
+        // IPv4 by name: Android's getLoopbackAddress() is ::1, and WebView's proxy rule is 127.0.0.1.
+        val socket = ServerSocket(0, 50, LOOPBACK)
         server = socket
         accepting = scopeJob.launch {
             while (isActive) {
@@ -467,6 +468,9 @@ class BrowserProxy(parent: CoroutineScope) {
     companion object {
         private const val TAG = "BrowserProxy"
         const val MAX_CONNECTIONS = 64
+
+        /** Where the listener is, and what WebView's proxy rule and the fetcher name. */
+        val LOOPBACK: InetAddress = InetAddress.getByAddress("127.0.0.1", byteArrayOf(127, 0, 0, 1))
         private val ESTABLISHED = "HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray()
         private val PROXY_AUTH_REQUIRED =
             "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"Happy\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray()

@@ -138,7 +138,7 @@ class BrowserProxyTest {
         val authority = BrowserPolicy.Authority.of(origin)!!
         page = proxy.open(BrowserProxy.Scope.Artifact(client, "a1", 3, authority, workspace = null), webView = false)
         http = OkHttpClient.Builder()
-            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(InetAddress.getLoopbackAddress(), proxy.port)))
+            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(BrowserProxy.LOOPBACK, proxy.port)))
             .proxyAuthenticator { _, response -> response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(page.username, page.password)).build() }
             .readTimeout(10, TimeUnit.SECONDS)
             .build()
@@ -166,7 +166,7 @@ class BrowserProxyTest {
         assertFalse(daemon.heads.any { it.contains("/v0/artifacts/") })
         // The shared WebView credential finds no shared page to borrow either.
         OkHttpClient.Builder()
-            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(InetAddress.getLoopbackAddress(), proxy.port)))
+            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(BrowserProxy.LOOPBACK, proxy.port)))
             .proxyAuthenticator { _, response -> if (response.request.header("Proxy-Authorization") != null) null else response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(proxy.webUsername, proxy.webPassword)).build() }
             .build().newCall(Request.Builder().url("$origin/index.html").build()).execute().use { assertEquals(407, it.code) }
         other.close()

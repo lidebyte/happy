@@ -7,7 +7,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runInterruptible
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URI
@@ -34,7 +33,7 @@ class BrowserFetcher(
     private val page = proxy.open(BrowserProxy.Scope.Workspace(client, workspace), webView = false)
     private val lazyHttp = lazy {
         OkHttpClient.Builder()
-            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(InetAddress.getLoopbackAddress(), proxy.port)))
+            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(BrowserProxy.LOOPBACK, proxy.port)))
             .proxyAuthenticator { _, response ->
                 // Answers the loopback proxy alone, once.
                 if (response.request.header("Proxy-Authorization") != null) null

@@ -164,7 +164,7 @@ internal object WebViewProxyOverride {
             val done = CompletableDeferred<Boolean>()
             applied = done
             this.port = port
-            val builder = ProxyConfig.Builder().addProxyRule("127.0.0.1:$port")
+            val builder = ProxyConfig.Builder().addProxyRule("${BrowserProxy.LOOPBACK.hostAddress}:$port")
             runCatching { builder.removeImplicitRules() }
             ProxyController.getInstance().setProxyOverride(builder.build(), direct) { done.complete(true) }
             return done.await()

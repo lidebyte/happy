@@ -891,7 +891,9 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
     network context, which answers the 407 with that page's credential
     alone, so the proxy routes by credential and pages can't reach each
     other's origins or workspaces. The profile is deleted with the page
-    (iOS's nonpersistent store). Without `MULTI_PROFILE`, pages share the
+    (iOS's nonpersistent store). Verified on WebView 124: Chromium's proxy
+    auth cache is per profile; two WebViews in one profile with different
+    credentials send the first one's for both. Without `MULTI_PROFILE`, pages share the
     default profile and one credential, and the proxy routes by target
     (an artifact's synthetic origin to its page, the rest through the
     newest page's workspace).
@@ -900,14 +902,22 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
     absolute-form HTTP below WebView, so bodies, WebSockets, SSE, TLS,
     cookies and redirects are the page's own, untouched.
   - Cleartext: `network_security_config` allows http only for the
-    synthetic artifact origin and localhost; other plain-http pages are
-    refused by Android before the proxy sees them (iOS allows them in
-    web content).
+    synthetic artifact origin, localhost and 127.0.0.1; WebView refuses any
+    other plain-http page (`ERR_CLEARTEXT_NOT_PERMITTED`) before the proxy
+    sees it. iOS allows them in web content only; Android has no
+    WebView-only switch, and a base-config allowance would also open
+    cleartext to the app's native clients.
+  - The listener binds 127.0.0.1 by address: Android's
+    `getLoopbackAddress()` is `::1`, which WebView's `127.0.0.1` rule
+    can't reach.
 - **Pooling** (`BrowserConnectionPool`, `BrowserResponseBody`): artifact
   `/api/*` requests lease keep-alive connections per page (6 idle, 5 s),
   returned only after an exact, self-delimited answer; everything else
   closes after one answer. `BrowserProxyTest` runs OkHttp through the
-  proxy against a byte-level fake daemon.
+  proxy against a byte-level fake daemon; `BrowserWebViewDeviceTest`
+  (androidTest, an emulator) does the same with real WebViews: two artifact
+  pages in their own profiles at once, the computer's localhost, and the
+  cleartext refusal.
 
 ## Autocomplete
 
