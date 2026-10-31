@@ -31,7 +31,6 @@ import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.components.AvatarSettings
-import com.slopus.happy.ui.components.AvatarStyle
 import com.slopus.happy.ui.components.LocalAvatarSettings
 import com.slopus.happy.ui.files.SessionChangesRoute
 import com.slopus.happy.ui.machine.LiveMachineControls
@@ -213,9 +212,8 @@ internal fun NavHostController.leaveSessionInfo(sessionId: String, successor: St
 /** The synced avatar settings, for every avatar under [content]. */
 @Composable
 fun ProvideAvatarSettings(settings: Settings, content: @Composable () -> Unit) {
-    val avatars = remember(settings.avatarStyle, settings.avatarMonochrome, settings.showFlavorIcons, settings.showHarnessIconInSessionHeader) {
+    val avatars = remember(settings.avatarMonochrome, settings.showFlavorIcons, settings.showHarnessIconInSessionHeader) {
         AvatarSettings(
-            style = AvatarStyle.normalize(settings.avatarStyle),
             monochrome = settings.avatarMonochrome,
             showFlavorIcons = settings.showFlavorIcons,
             showHarnessIconInSessionHeader = settings.showHarnessIconInSessionHeader,

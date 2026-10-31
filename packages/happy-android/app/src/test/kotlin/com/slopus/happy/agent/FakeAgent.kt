@@ -44,11 +44,11 @@ object Wire {
 
     fun membership(taskId: String, orderKey: String) = buildJsonObject { put("taskId", taskId); put("orderKey", orderKey) }
 
-    fun project(id: String, name: String, agents: List<JsonObject>, orderKey: String = "1", version: String = "01", avatarUrl: String? = null) = buildJsonObject {
+    /** [avatar] is the wire's project `avatar` (API.md "Projects"): `image` with [thumbhash], `home`, or null for none. */
+    fun project(id: String, name: String, agents: List<JsonObject>, orderKey: String = "1", version: String = "01", avatar: String? = null, thumbhash: String? = null) = buildJsonObject {
         put("id", id); put("name", name); put("version", version); put("orderKey", orderKey); put("status", "active")
         put("agents", JsonArray(agents))
-        // A repo the agent cloned: its picture, daemon-relative.
-        if (avatarUrl != null) put("avatar", buildJsonObject { put("url", avatarUrl) })
+        put("avatar", avatar?.let { kind -> buildJsonObject { put("kind", kind); if (kind == "image") { put("thumbhash", thumbhash); put("source", "user") } } } ?: kotlinx.serialization.json.JsonNull)
     }
 
     fun workspace(id: String, projectId: String, name: String, agents: List<JsonObject>, orderKey: String = "1") = buildJsonObject {

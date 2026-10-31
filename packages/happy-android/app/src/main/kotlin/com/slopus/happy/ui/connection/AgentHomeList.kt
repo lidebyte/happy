@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.connection
 
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -31,7 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -50,11 +53,13 @@ import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentFeedSection
 import com.slopus.happy.agent.AgentPictures
 import com.slopus.happy.agent.ConversationKind
+import com.slopus.happy.agent.FolderMark
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
+import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.rememberThumbHash
@@ -183,18 +188,39 @@ internal fun TileMark(glyph: Ionicon, tile: RowTile, size: Dp = AgentHomeSpec.ma
 val LocalAgentPictures = staticCompositionLocalOf<AgentPictures?> { null }
 
 /**
- * A conversation's mark at [size]: a bot's picture over its ThumbHash, or
- * its kind's glyph on a softly tinted tile: iOS's person for a bot without
- * a picture, the checkbox for a task.
+ * A conversation's mark at [size], as happy-ios's grouped home has it
+ * (SidebarRows.swift, RowView.swift): the person's Happy wears Happy's
+ * mark; a bot its picture over its ThumbHash; a bot without one, and every
+ * task, the placeholder its own ID picks, a rounded square like a picture,
+ * moving with Animated Avatars on.
  */
 @Composable
 internal fun ConversationMark(row: AgentFeedRow.Conversation, size: Dp) {
     val picture = row.picture
-    if (picture != null) {
-        AgentPicture(picture, row.thumbhash, size)
-        return
+    when {
+        row.happy -> HappyMark(size)
+        picture != null -> AgentPicture(picture, row.thumbhash, size)
+        else -> PlaceholderAvatar(row.seed ?: row.agentId, size, shape = RoundedCornerShape(AgentHomeSpec.tileRadius))
     }
-    if (row.kind == ConversationKind.Bot) TileMark(Ionicon.PersonCircleOutline, RowTile.Indigo, size) else TileMark(Ionicon.CheckboxOutline, RowTile.Orange, size)
+}
+
+/** Happy's clay mark, as drawn, filling the mark's square. */
+@Composable
+private fun HappyMark(size: Dp) {
+    Image(painterResource(R.drawable.clay_happy_mark), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(size))
+}
+
+/**
+ * A project's mark: its picture over its ThumbHash, desktop's home glyph
+ * for the home project, or the placeholder its ID picks.
+ */
+@Composable
+internal fun FolderMarkView(mark: FolderMark, size: Dp) {
+    when (mark) {
+        is FolderMark.Picture -> AgentPicture(mark.path, mark.thumbhash, size)
+        FolderMark.Home -> TileMark(Ionicon.HomeOutline, RowTile.Blue, size)
+        is FolderMark.Placeholder -> PlaceholderAvatar(mark.seed, size, shape = RoundedCornerShape(AgentHomeSpec.tileRadius))
+    }
 }
 
 /** A picture the agent serves, read once ([AgentPictures]), a rounded square over its ThumbHash. */
@@ -339,7 +365,7 @@ private fun CardRow(item: AgentHomeItem.Row, modifier: Modifier, content: @Compo
 private fun titleStart(row: AgentFeedRow): Dp {
     val (depth, marked) = when (row) {
         is AgentFeedRow.Conversation -> row.depth to AgentHomeSpec.hasMark(row.kind)
-        is AgentFeedRow.Folder -> row.depth to (row.picture != null)
+        is AgentFeedRow.Folder -> row.depth to (row.mark != null)
         AgentFeedRow.Artifacts, is AgentFeedRow.Surface -> 0 to true
         is AgentFeedRow.Section -> return 0.dp
     }
@@ -417,10 +443,10 @@ private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () ->
     }
 }
 
-/** A project or a worktree: its name, and a cloned repo's picture before it. It opens nothing. */
+/** A project or a worktree: its name, and a project's mark before it ([FolderMarkView]). It opens nothing. */
 @Composable
 private fun FolderRow(row: AgentFeedRow.Folder) {
-    val picture = row.picture
+    val mark = row.mark
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -428,8 +454,8 @@ private fun FolderRow(row: AgentFeedRow.Folder) {
             .padding(start = AgentHomeSpec.markInset + AgentHomeSpec.indent * row.depth, end = AgentHomeSpec.paddingEnd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (picture != null) {
-            Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { AgentPicture(picture, null, AgentHomeSpec.mark) }
+        if (mark != null) {
+            Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { FolderMarkView(mark, AgentHomeSpec.mark) }
         }
         Text(
             row.name,
@@ -438,7 +464,7 @@ private fun FolderRow(row: AgentFeedRow.Folder) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .padding(start = if (picture != null) AgentHomeSpec.markGap else 0.dp)
+                .padding(start = if (mark != null) AgentHomeSpec.markGap else 0.dp)
                 .weight(1f)
                 .wrapContentHeight(unbounded = true)
                 .testTag(AgentHomeTags.ROW_TITLE),

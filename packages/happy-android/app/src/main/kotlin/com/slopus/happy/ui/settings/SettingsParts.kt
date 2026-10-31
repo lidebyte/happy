@@ -120,13 +120,15 @@ fun SettingsTile(icon: Ionicon, color: Color) {
 /** Who the page is for, as its top shows them. */
 @Immutable
 data class SettingsProfile(
-    /** The account's or agent connection's id: the generated picture's seed. */
+    /** The account's or agent connection's id. */
     val id: String,
     val name: String,
     /** "@username" or the kind of account; an agent connection's link status. */
     val subtitle: String,
     val imageUri: String? = null,
     val thumbhash: String? = null,
+    /** What picks the placeholder picture: an agent's own seed, else [id]. */
+    val seed: String = id,
 )
 
 /** One item of the picture's menu. */
@@ -168,7 +170,7 @@ fun SettingsHeader(profile: SettingsProfile, edit: List<SettingsEditItem>? = nul
                     },
                 ),
         ) {
-            Avatar(profile.id, SettingsPageSpec.picture, imageUri = profile.imageUri, thumbhash = profile.thumbhash)
+            Avatar(profile.seed, SettingsPageSpec.picture, imageUri = profile.imageUri, thumbhash = profile.thumbhash, animated = false)
             if (edit != null) {
                 Box(
                     modifier = Modifier
@@ -261,7 +263,7 @@ fun AccountsCard(accounts: AccountMenu, actions: AccountsCardActions) {
                 Item(
                     title = name,
                     subtitle = entry.detail,
-                    icon = { Avatar(entry.id, SettingsPageSpec.accountAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash) },
+                    icon = { Avatar(entry.seed, SettingsPageSpec.accountAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
                     rightElement = when {
                         entry.active -> { { Icon(Ionicon.Checkmark, SettingsPageSpec.check, colors.textLink) } }
                         entry.attention -> { { Icon(Ionicon.AlertCircleOutline, SettingsPageSpec.check, colors.textDestructive) } }

@@ -18,6 +18,10 @@
     <string name="settings_agents">Agents</string>
     <string name="settings_agents_subtitle">Connected machines and agent defaults</string>
     <string name="happy_action_unknown_error">Unknown error</string>
+
+    <!-- happy-ios Strings.LiveAvatars: Animated Avatars, with no equivalent in happy-app -->
+    <string name="live_avatars_title">Animated Avatars</string>
+    <string name="live_avatars_description">Avatars without a picture move. Uses more battery.</string>
     <!-- literals in settings/appearance.tsx -->
     <string name="settings_appearance_file_diffs_sidebar">File Diffs Sidebar</string>
     <string name="settings_appearance_file_diffs_sidebar_description">Show git changes next to the chat on desktop</string>

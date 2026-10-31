@@ -241,6 +241,7 @@ private fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, con
     // Read every time the page shows, as iOS's Profile row is.
     LaunchedEffect(session) { session?.profile?.refresh() }
     val scope = rememberCoroutineScope()
+    val accounts = rememberAccountMenu(graph)
     val actions = remember(graph, nav, connectionId) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
@@ -253,12 +254,13 @@ private fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, con
     AgentConnectionSettingsScreen(
         profile = SettingsProfile(
             id = connectionId,
+            seed = accounts.entries.firstOrNull { it.id == connectionId }?.seed ?: connectionId,
             name = agent.name,
             subtitle = statusText(status),
             imageUri = agent.avatarFile?.let { "file://$it" },
             thumbhash = agent.thumbhash,
         ),
-        accounts = rememberAccountMenu(graph),
+        accounts = accounts,
         actions = actions,
         about = rememberAboutInfo(graph),
         accountActions = rememberAccountsCardActions(graph),
