@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.ui.components.DialogWindowMotion
+import com.slopus.happy.ui.components.WindowMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -46,6 +48,7 @@ object PictureViewerTags {
 @Composable
 fun PictureViewer(bytes: ByteArray, cacheKey: String, name: String?, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        DialogWindowMotion(WindowMotion.Fade)
         var scale by remember { mutableFloatStateOf(1f) }
         var offsetX by remember { mutableFloatStateOf(0f) }
         var offsetY by remember { mutableFloatStateOf(0f) }
