@@ -3,6 +3,7 @@ package com.slopus.happy.agent
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -28,11 +29,49 @@ data class AgentCatalog(
     val surfaces: Map<String, JsonObject> = emptyMap(),
     /** The person this phone is paired for (`profile.userId`). */
     val userId: String? = null,
+    /**
+     * The person's user settings by key, each the whole setting object as
+     * the agent confirmed it (`key`, `value`, `updatedAt`, `version`); the
+     * copy with the greater `version` wins (API.md, "Keeping a copy").
+     */
+    val settings: Map<String, JsonObject> = emptyMap(),
+    /** Settings changed on this phone and not yet answered, by key: shown over [settings] until they are. */
+    val pendingSettings: Map<String, PendingSetting> = emptyMap(),
     /** The journal position everything here is current to. */
     val cursor: String? = null,
     /** A snapshot has been read (or the cached one restored). */
     val loaded: Boolean = false,
 ) {
+    /** A change to one setting made here: what it sets, its `mutationId`, and when the person made it. */
+    @Serializable
+    data class PendingSetting(val value: JsonElement, val mutationId: String, val updatedAt: Long)
+
+    /** Every setting's value, a change made here over the agent's. A cleared setting is [JsonNull]. */
+    val settingValues: Map<String, JsonElement>
+        get() = settings.mapValues { it.value["value"] ?: JsonNull } + pendingSettings.mapValues { it.value.value }
+
+    /** Desktop's Hide projects (iOS's `DesktopSettingKeys.projectsHidden`): home leaves the projects out. */
+    val projectsHidden: Boolean get() = DesktopSettings.projectsHidden(settingValues)
+
+    /** [setting] (a setting object) kept unless the copy here has a greater `version`. */
+    fun withSetting(setting: JsonObject): AgentCatalog {
+        val merged = mergeSettings(settings, listOf(setting))
+        return if (merged == settings) this else copy(settings = merged)
+    }
+
+    /** A change made here to [key], shown at once and sent when the link is up. */
+    fun withPendingSetting(key: String, value: JsonElement, mutationId: String, updatedAt: Long): AgentCatalog =
+        copy(pendingSettings = pendingSettings + (key to PendingSetting(value, mutationId, updatedAt)))
+
+    /**
+     * The agent answered [mutationId]'s write to [key] with [setting]: kept,
+     * and the change made here goes unless a later one for the key replaced it.
+     */
+    fun settingAcknowledged(key: String, mutationId: String, setting: JsonObject?): AgentCatalog {
+        val kept = setting?.let { withSetting(it) } ?: this
+        return if (kept.pendingSettings[key]?.mutationId == mutationId) kept.copy(pendingSettings = kept.pendingSettings - key) else kept
+    }
+
     /**
      * The resources a broken version chain left behind, to read again;
      * [SNAPSHOT], the whole snapshot (what a Surface event changed).
@@ -63,6 +102,11 @@ data class AgentCatalog(
             agents = index,
             surfaces = bootstrap.surfaces.orEmpty().mapNotNull { s -> s.string("id")?.let { it to s } }.toMap(),
             userId = bootstrap.profile?.string("userId"),
+            // Merged by version rather than replaced: a snapshot read while a
+            // write was answered never undoes the newer copy. Nothing is lost
+            // that way, as a cleared setting stays a setting with a null value.
+            settings = bootstrap.userSettings?.let { mergeSettings(settings, it) } ?: settings,
+            pendingSettings = pendingSettings,
             cursor = bootstrap.cursor ?: cursor,
             loaded = true,
         )
@@ -114,6 +158,8 @@ data class AgentCatalog(
                 val taskId = (data["membership"] as? JsonObject)?.string("taskId")
                 Applied(if (taskId == null) moved else moved.copy(memberships = memberships - taskId))
             }
+            // A whole setting, not a version-chained diff: the greater version wins.
+            "user_settings.updated" -> Applied((data["setting"] as? JsonObject)?.let(moved::withSetting) ?: moved)
             // Who is in a Surface and where it sits in their list come only whole, with the snapshot (as iOS reads them).
             else -> if (event.type.startsWith("surface.")) Applied(moved, listOf(Stale(Stale.SNAPSHOT, ""))) else Applied(moved)
         }
@@ -224,6 +270,19 @@ data class AgentCatalog(
             val have = current?.string("version") ?: return true
             val next = candidate.string("version") ?: return false
             return next >= have
+        }
+
+        /** [incoming] setting objects over [current], by key; the greater `version` (UUIDv7, as text) wins. */
+        internal fun mergeSettings(current: Map<String, JsonObject>, incoming: List<JsonObject>): Map<String, JsonObject> {
+            var merged = current
+            for (setting in incoming) {
+                val key = setting.string("key") ?: continue
+                val have = merged[key]?.string("version")
+                val next = setting.string("version")
+                if (have != null && (next == null || next <= have)) continue
+                merged = merged + (key to setting)
+            }
+            return merged
         }
 
         fun decodeAgent(agent: JsonObject): WireAgent? = try {

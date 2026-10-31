@@ -39,7 +39,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import com.slopus.happy.model.settings.ConnectApi
 import com.slopus.happy.model.settings.HttpConnectApi
 import com.slopus.happy.model.settings.Languages
+import com.slopus.happy.ui.RestoreManualRoute
 import com.slopus.happy.ui.SettingsRoute
+import com.slopus.happy.accounts.accountId
+import com.slopus.happy.ui.connection.rememberAccountsCardActions
+import com.slopus.happy.ui.home.rememberAccountMenu
 import com.slopus.happy.ui.changelog.Changelog
 import com.slopus.happy.ui.changelog.ChangelogScreen
 import com.slopus.happy.ui.machine.MachineRoute
@@ -56,6 +60,7 @@ import com.slopus.happy.ui.voice.voiceRoutes
 import com.slopus.happy.ui.voice.VoiceSettingsRoute
 
 @Serializable data object AccountRoute
+@Serializable data object BackupRoute
 @Serializable data object AppearanceRoute
 @Serializable data object LanguageRoute
 @Serializable data object AgentsRoute
@@ -67,6 +72,7 @@ fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     voiceRoutes(graph, nav)
     composable<SettingsRoute> { SettingsIndex(graph, nav) }
     composable<AccountRoute> { Account(graph, nav) }
+    composable<BackupRoute> { Backup(graph, nav) }
     composable<AppearanceRoute> { Appearance(graph, nav) }
     composable<AgentsRoute> { Agents(graph, nav) }
     composable<ConnectClaudeRoute> { ConnectClaudeScreen(onBack = { nav.popBackStack() }) }
@@ -203,85 +209,108 @@ internal fun rememberSupportAction(paywall: Paywall, onError: (String?) -> Unit)
     }
 }
 
+/** What About shows for this build, and Support us for this account's purchases. */
 @Composable
-private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
+internal fun rememberAboutInfo(graph: AppGraph): AboutInfo {
+    val purchases by graph.purchases.purchases.collectAsStateWithLifecycle()
+    return AboutInfo(
+        versionName = versionDetail(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+        versionSubtitle = buildSubtitle(BuildConfig.BUILD_COMMIT_SHA, BuildConfig.BUILD_COMMIT_TIMESTAMP),
+        isPro = BuildConfig.DEBUG || purchases.entitlements["pro"] == true,
+    )
+}
+
+/**
+ * About's and Support us' actions, the same on both kinds of page: links
+ * open outside, What's New, ten taps on Version toggle developer mode (with
+ * its alert), Support us presents the paywall. Shows its own alerts.
+ */
+@Composable
+internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): AboutActions {
     val uriHandler = LocalUriHandler.current
-    val profile by rememberProfile(graph)
-    val api = rememberConnectApi(graph)
     val alerts = remember { Alerts() }
     val onError = errorAlert(alerts)
-    val purchases by graph.purchases.purchases.collectAsStateWithLifecycle()
     val support = rememberSupportAction(graph.purchases, onError)
-
-    val cancel = stringResource(R.string.common_cancel)
-    val disconnect = stringResource(R.string.modals_disconnect)
-    val disconnectClaudeTitle = stringResource(R.string.modals_disconnect_service, "Claude")
-    val disconnectClaudeMessage = stringResource(R.string.modals_disconnect_service_confirm, "Claude")
-    val disconnectGitHubTitle = stringResource(R.string.modals_disconnect_github)
-    val disconnectGitHubMessage = stringResource(R.string.modals_disconnect_github_confirm)
-
-    val connectGitHub = rememberHappyAction(onError) { openExternalUrl(uriHandler, api.gitHubOAuthUrl()) }
-    val disconnectGitHub = rememberHappyAction(onError) {
-        api.disconnectGitHub()
-        graph.requestSync()
-    }
-    val disconnectClaude = rememberHappyAction(onError) {
-        api.disconnectService("anthropic")
-        graph.requestSync()
-    }
-
-    // Modal.confirm on Android: only a button closes it.
-    fun confirm(title: String, message: String, action: HappyAction) = alerts.show(
-        Alert(title, message, listOf(AlertButton(cancel), AlertButton(disconnect, destructive = true, onClick = action::run)), cancelable = false),
-    )
-    val connect = rememberTerminalConnect(graph)
-    var enteringUrl by remember { mutableStateOf(false) }
-
-    val local by graph.localSettings.values.collectAsStateWithLifecycle()
     val versionClicks = remember { MultiClick(required = 10) }
     val developerMode = stringResource(R.string.modals_developer_mode)
     val developerModeEnabled = stringResource(R.string.modals_developer_mode_enabled)
     val developerModeDisabled = stringResource(R.string.modals_developer_mode_disabled)
     val ok = stringResource(R.string.common_ok)
+    alerts.Host()
+    return remember(graph, nav, uriHandler, support, developerMode, developerModeEnabled, developerModeDisabled, ok) {
+        AboutActions(
+            onOpenUrl = { url -> openExternalUrl(uriHandler, url) },
+            onWhatsNew = { nav.navigate(ChangelogRoute) },
+            onVersion = {
+                if (versionClicks.click()) {
+                    val enabled = !graph.localSettings.values.value.devModeEnabled
+                    graph.localSettings.change { it.copy(devModeEnabled = enabled) }
+                    alerts.show(Alert(developerMode, if (enabled) developerModeEnabled else developerModeDisabled, listOf(AlertButton(ok))))
+                }
+            },
+            onSupport = support::run,
+        )
+    }
+}
+
+/** The open Happy account's server host, or null for the default server. */
+private fun serverHost(graph: AppGraph): String? =
+    graph.serverUrl.takeIf { it != graph.serverConfig.defaultUrl }?.let { url -> runCatching { java.net.URI(url).host }.getOrNull() ?: url }
+
+@Composable
+private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
+    val auth by graph.auth.state.collectAsStateWithLifecycle()
+    val signedIn = auth as? AuthState.SignedIn ?: return
+    val profile by rememberProfile(graph)
+    val connect = rememberTerminalConnect(graph)
+    var enteringUrl by remember { mutableStateOf(false) }
+    val kind = stringResource(R.string.settings_happy_account)
+    val login = profile.github?.login
+    val id = accountId(signedIn.credentials) ?: profile.id
 
     SettingsScreen(
-        versionName = versionDetail(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
-        versionSubtitle = buildSubtitle(BuildConfig.BUILD_COMMIT_SHA, BuildConfig.BUILD_COMMIT_TIMESTAMP),
-        profile = profile,
-        onBack = { nav.popBackStack() },
-        connectingTerminal = connect.isLoading,
-        onScanQr = connect::scan,
-        onEnterUrl = { enteringUrl = true },
-        accounts = ConnectedAccounts(
-            claudeConnected = "anthropic" in profile.connectedServices,
-            claudeBusy = disconnectClaude.loading,
-            gitHubLogin = profile.github?.login,
-            gitHubBusy = connectGitHub.loading || disconnectGitHub.loading,
+        profile = SettingsProfile(
+            id = id,
+            name = profile.displayName ?: login ?: kind,
+            subtitle = login?.let { "@$it" } ?: kind,
+            imageUri = profile.avatarUrl,
+            thumbhash = profile.avatar?.thumbhash,
         ),
-        onClaude = {
-            if ("anthropic" in profile.connectedServices) confirm(disconnectClaudeTitle, disconnectClaudeMessage, disconnectClaude) else nav.navigate(ConnectClaudeRoute)
+        about = rememberAboutInfo(graph),
+        accounts = rememberAccountMenu(graph),
+        accountActions = rememberAccountsCardActions(graph),
+        actions = remember(graph, nav, connect) {
+            HappySettingsActions(
+                onBack = { nav.popBackStack() },
+                onAccount = { nav.navigate(AccountRoute) },
+                onBackup = { nav.navigate(BackupRoute) },
+                onAppearance = { nav.navigate(AppearanceRoute) },
+                onLanguage = { nav.navigate(LanguageRoute) },
+                onVoice = { nav.navigate(VoiceSettingsRoute) },
+                onAgents = { nav.navigate(AgentsRoute) },
+                onScanTerminal = connect::scan,
+                onEnterTerminal = { enteringUrl = true },
+                onSignOut = { graph.logout() },
+            )
         },
-        onGitHub = {
-            if (profile.github != null) confirm(disconnectGitHubTitle, disconnectGitHubMessage, disconnectGitHub) else connectGitHub.run()
-        },
-        onAccount = { nav.navigate(AccountRoute) },
-        onAppearance = { nav.navigate(AppearanceRoute) },
-        onAgents = { nav.navigate(AgentsRoute) },
-        onVoice = { nav.navigate(VoiceSettingsRoute) },
-        onWhatsNew = { nav.navigate(ChangelogRoute) },
-        isPro = BuildConfig.DEBUG || purchases.entitlements["pro"] == true,
-        onSupport = support::run,
-        onOpenUrl = { url -> openExternalUrl(uriHandler, url) },
-        onVersion = {
-            if (versionClicks.click()) {
-                val enabled = !local.devModeEnabled
-                graph.localSettings.change { it.copy(devModeEnabled = enabled) }
-                alerts.show(Alert(developerMode, if (enabled) developerModeEnabled else developerModeDisabled, listOf(AlertButton(ok))))
-            }
-        },
+        aboutActions = rememberAboutActions(graph, nav),
+        connectingTerminal = connect.isLoading,
     )
     if (enteringUrl) EnterTerminalUrlPrompt(connect, onDismiss = { enteringUrl = false })
-    alerts.Host()
+}
+
+@Composable
+private fun Backup(graph: AppGraph, nav: NavHostController) {
+    val auth by graph.auth.state.collectAsStateWithLifecycle()
+    val account = auth as? AuthState.SignedIn ?: return
+    val link = rememberAccountLink(graph)
+    BackupScreen(
+        formattedSecretKey = account.formattedSecretKey,
+        onBack = { nav.popBackStack() },
+        linkingDevice = link.isLoading,
+        onLinkNewDevice = link::scan,
+        onRestore = { nav.navigate(RestoreManualRoute) },
+    )
 }
 
 @Composable
@@ -290,16 +319,13 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
     val account = auth as? AuthState.SignedIn ?: return
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val profile by rememberProfile(graph)
-    val api = rememberConnectApi(graph)
     val tokensApi = remember(graph) { PushTokensApi(graph.http) { (graph.auth.state.value as? AuthState.SignedIn)?.credentials?.token } }
     val pushRegistration = rememberPushRegistration(graph)
     val scope = rememberCoroutineScope()
     val alerts = remember { Alerts() }
-    val onError = errorAlert(alerts)
     val errorTitle = stringResource(R.string.common_error)
     val successTitle = stringResource(R.string.common_success)
     val ok = stringResource(R.string.common_ok)
-    val resources = LocalResources.current
     fun showError(message: String) = alerts.show(Alert(errorTitle, message, listOf(AlertButton(ok))))
     fun showSuccess(message: String) = alerts.show(Alert(successTitle, message, listOf(AlertButton(ok))))
 
@@ -316,8 +342,6 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
         )
     }
     var push by remember { mutableStateOf(PushState(deviceLabel = deviceLabel, appLabel = appLabel)) }
-    var disconnectingService by remember { mutableStateOf<String?>(null) }
-    val link = rememberAccountLink(graph)
 
     suspend fun loadPush(showErrors: Boolean = false) {
         push = push.copy(loading = true)
@@ -335,38 +359,15 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
     // Loaded on every visit (useFocusEffect).
     LaunchedEffect(Unit) { loadPush() }
 
-    val disconnectGitHub = rememberHappyAction(onError) {
-        api.disconnectGitHub()
-        graph.requestSync()
-    }
-
     AccountScreen(
         anonId = account.encryption.anonId,
         publicId = account.publicId,
-        formattedSecretKey = account.formattedSecretKey,
         analyticsOptOut = settings.analyticsOptOut,
         onAnalyticsOptOutChange = { optOut -> graph.settings.change { it.copy(analyticsOptOut = optOut) } },
-        onLogout = { graph.logout() },
         onBack = { nav.popBackStack() },
-        profile = profile,
-        gitHubBusy = disconnectGitHub.loading,
-        onDisconnectGitHub = disconnectGitHub::run,
-        disconnectingService = disconnectingService,
-        onDisconnectService = { service, name ->
-            scope.launch {
-                disconnectingService = service
-                try {
-                    api.disconnectService(service)
-                    graph.requestSync()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    showError(resources.getString(R.string.errors_disconnect_service_failed, name))
-                } finally {
-                    disconnectingService = null
-                }
-            }
-        },
+        displayName = profile.displayName,
+        username = profile.github?.login,
+        server = serverHost(graph),
         push = push,
         onRequestPush = {
             scope.launch {
@@ -428,8 +429,6 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
                 }
             }
         },
-        linkingDevice = link.isLoading,
-        onLinkNewDevice = link::scan,
     )
     alerts.Host()
 }

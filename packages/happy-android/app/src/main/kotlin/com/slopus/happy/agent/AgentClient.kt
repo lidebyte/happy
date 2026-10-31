@@ -79,6 +79,12 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
         return check(link.transport.request(method, path, link.token, bytes, headers))
     }
 
+    /** Sends [bytes] as they are (an image), with their Content-Type in [headers]. */
+    suspend fun sendBytes(method: String, path: String, bytes: ByteArray, headers: Map<String, String>): TransportResponse {
+        val link = link()
+        return check(link.transport.request(method, path, link.token, bytes, headers))
+    }
+
     /** The answer to [send] decoded; an answer that doesn't decode is [AgentConnectionException.Reason.InvalidResponse]. */
     suspend fun <T> decode(
         deserializer: DeserializationStrategy<T>,

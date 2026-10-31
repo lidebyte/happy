@@ -261,7 +261,7 @@ class FontScaleLayoutTest {
 
     @Test
     fun settingsScreenFitsLargeText() {
-        showLarge { SettingsScreen(versionName = "0.1.0", onBack = {}, onAccount = {}, onAppearance = {}, onOpenUrl = {}) }
+        showLarge { SettingsScreen(com.slopus.happy.ui.settings.SettingsFixtures.profile, com.slopus.happy.ui.settings.AboutInfo("0.1.0")) }
         assertNothingClipped()
     }
 

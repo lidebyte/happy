@@ -57,6 +57,48 @@ class AgentFeedTest {
     }
 
     @Test
+    fun desktopsHideProjectsLeavesTheProjectsOutLiveAndTheNewerVersionWins() {
+        val keys = { catalog: AgentCatalog -> AgentFeed.derive(catalog).rows.map { it.key } }
+        val shown = catalog(sample)
+        assertTrue("section-projects" in keys(shown))
+
+        // In the snapshot: no projects, their worktrees or their conversations; bots and tasks stay.
+        val hidden = catalog(sample.with("userSettings", kotlinx.serialization.json.JsonArray(listOf(Wire.projectsHidden(true, "v2")))))
+        assertTrue(hidden.projectsHidden)
+        assertEquals(
+            listOf("section-places", "artifacts", "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2", "section-tasks", "agent-at2", "agent-at1"),
+            keys(hidden),
+        )
+
+        // Shown again on the desktop: `user_settings.updated` brings them back at once.
+        val again = hidden.apply(Wire.event("c1", "user_settings.updated", buildJsonObject { put("setting", Wire.projectsHidden(false, "v3")) })).catalog
+        assertFalse(again.projectsHidden)
+        assertEquals(keys(shown), keys(again))
+
+        // An older copy (a late event, a snapshot read before the change) never undoes a newer one.
+        val stale = again.apply(Wire.event("c2", "user_settings.updated", buildJsonObject { put("setting", Wire.projectsHidden(true, "v1")) })).catalog
+        assertFalse(stale.projectsHidden)
+        val snapshot = again.withBootstrap(AgentClient.json.decodeFromJsonElement(WireDesktopBootstrap.serializer(),
+            sample.with("userSettings", kotlinx.serialization.json.JsonArray(listOf(Wire.projectsHidden(true, "v2"))))))
+        assertFalse(snapshot.projectsHidden)
+
+        // Cleared (null) or anything but `true` shows them.
+        val cleared = hidden.withSetting(Wire.setting(DesktopSettings.PROJECTS_VISIBILITY, kotlinx.serialization.json.JsonNull, "v9"))
+        assertFalse(cleared.projectsHidden)
+
+        // A change made on this phone shows over the agent's until it is answered, and a stale answer keeps a later change.
+        val local = shown.withPendingSetting(DesktopSettings.PROJECTS_VISIBILITY, DesktopSettings.projectsVisibility(true), "m1", 5L)
+        assertTrue(local.projectsHidden)
+        val relocal = local.withPendingSetting(DesktopSettings.PROJECTS_VISIBILITY, DesktopSettings.projectsVisibility(false), "m2", 6L)
+        val answered = relocal.settingAcknowledged(DesktopSettings.PROJECTS_VISIBILITY, "m1", Wire.projectsHidden(true, "v4"))
+        assertFalse(answered.projectsHidden)
+        assertEquals("m2", answered.pendingSettings.getValue(DesktopSettings.PROJECTS_VISIBILITY).mutationId)
+        val done = answered.settingAcknowledged(DesktopSettings.PROJECTS_VISIBILITY, "m2", Wire.projectsHidden(false, "v5"))
+        assertTrue(done.pendingSettings.isEmpty())
+        assertFalse(done.projectsHidden)
+    }
+
+    @Test
     fun onlyABotWithAPictureHasOne() {
         val rows = AgentFeed.derive(catalog(sample)).conversations.associateBy { it.agentId }
         assertEquals("/v0/bots/b2/avatar", rows.getValue("ab2").picture)

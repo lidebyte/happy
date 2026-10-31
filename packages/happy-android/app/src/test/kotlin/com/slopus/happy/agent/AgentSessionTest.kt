@@ -202,4 +202,33 @@ class AgentSessionTest {
         session.upsertTask(Wire.task("t9", "New Task", Wire.agent("at9")))
         eventually({ session.feed.value.conversations.map { it.agentId } }) { "at9" in it }
     }
+
+    @Test
+    fun hidingProjectsOnTheDesktopHidesThemHereLiveAndAChangeHereIsSent(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(
+            bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1"))),
+            projects = listOf(Wire.project("p1", "rig", listOf(Wire.agent("ap1")))),
+            userSettings = emptyList(),
+        )
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { it == listOf("ab1", "ap1") }
+        assertFalse(session.projectsHidden.value)
+
+        // The desktop hides them: home drops the projects as the event comes.
+        agent.frames.send(Wire.frame("c1", "user_settings.updated", buildJsonObject { put("setting", Wire.projectsHidden(true, "v1")) }))
+        eventually({ session.projectsHidden.value }) { it }
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { it == listOf("ab1") }
+
+        // Shown again from this phone: at once here, then PUT to the agent with its mutation id and time.
+        val path = "/v0/user-settings/${DesktopSettings.PROJECTS_VISIBILITY}"
+        agent.resources[path] = buildJsonObject { put("setting", Wire.projectsHidden(false, "v2")) }
+        session.setProjectsHidden(false)
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { it == listOf("ab1", "ap1") }
+        eventually({ agent.calls }) { "PUT $path" in it }
+        eventually({ session.catalog.value.pendingSettings }) { it.isEmpty() }
+        assertFalse(session.projectsHidden.value)
+        assertEquals("v2", session.catalog.value.settings.getValue(DesktopSettings.PROJECTS_VISIBILITY)["version"].toString().trim('"'))
+    }
 }

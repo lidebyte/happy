@@ -44,8 +44,8 @@
     <string name="agent_settings_edit_name">Edit name</string>
     <string name="agent_settings_edit_avatar">Edit avatar</string>
     <!-- Typed into the Chief of Staff's composer, unsent; the trailing space is deliberate. -->
-    <string name="agent_settings_edit_name_prefix">"Change this agent connection\'s name to "</string>
-    <string name="agent_settings_edit_avatar_prefix">"Change this agent connection\'s avatar: "</string>
+    <string name="agent_settings_edit_name_prefix">"Change your name to "</string>
+    <string name="agent_settings_edit_avatar_prefix">"Change your avatar to "</string>
     <string name="agent_settings_profile_footer">Your Chief of Staff makes the change. Nothing is sent until you send it.</string>
     <string name="agent_settings_connect">Connect Agent</string>
     <string name="agent_settings_connected">Connected</string>

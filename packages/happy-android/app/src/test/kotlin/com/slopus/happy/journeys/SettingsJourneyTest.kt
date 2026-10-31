@@ -135,10 +135,9 @@ class SettingsJourneyTest {
         back()
         rule.waitFor(FlatRowTags.ROW)
 
-        // Logout, from Settings › Account, confirmed.
+        // Logout, Settings' last row, confirmed.
         rule.node(HomeTags.SETTINGS).performClick()
-        clickable("Аккаунт").performScrollTo().performClick()
-        clickable("Выйти").performScrollTo().performClick()
+        rule.node(com.slopus.happy.ui.settings.SettingsPageTags.REMOVE).performScrollTo().performClick()
         dialogButton("Выйти").performClick()
         // The language was the account's setting: the first screen is back in the device's, as after happy-app's reload.
         rule.waitForText("Start")

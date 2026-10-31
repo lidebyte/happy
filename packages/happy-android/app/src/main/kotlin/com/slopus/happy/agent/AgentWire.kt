@@ -140,6 +140,12 @@ data class WireDesktopBootstrap(
     /** Every Surface with its members; null from a daemon that serves none. */
     val surfaces: List<JsonObject>? = null,
     val profile: JsonObject? = null,
+    /**
+     * The person's user settings (API.md, "User settings"): every setting
+     * object the daemon holds for them. Null from a daemon that has none,
+     * which leaves those preferences on the phone.
+     */
+    val userSettings: List<JsonObject>? = null,
     val cursor: String? = null,
 )
 
