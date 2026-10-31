@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Surface
@@ -113,6 +114,8 @@ fun PromptModal(prompt: Prompt, onDismiss: () -> Unit) {
                     value = value,
                     onValueChange = { value = it },
                     singleLine = true,
+                    // Rounded as the dialog's other controls; the theme's extra-small is a menu's 16.
+                    shape = RoundedCornerShape(12.dp),
                     placeholder = prompt.placeholder?.let { { Text(it, maxLines = 1) } },
                     visualTransformation = if (prompt.inputType == PromptInputType.SecureText) PasswordVisualTransformation() else VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(

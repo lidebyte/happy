@@ -60,6 +60,9 @@ object MenuSpec {
 
     fun container(colors: HappyColors): Color = if (colors.dark) colors.surfaceHighest else colors.surface
     fun selected(colors: HappyColors): Color = colors.text.copy(alpha = if (colors.dark) 0.08f else 0.05f)
+    /** Between groups, and round the card in dark: the text colour, faint, so it shows on the lifted grey. */
+    fun divider(colors: HappyColors): Color = colors.text.copy(alpha = if (colors.dark) 0.14f else 0.1f)
+    fun edge(colors: HappyColors): Color = colors.text.copy(alpha = 0.1f)
 }
 
 /**
@@ -84,7 +87,7 @@ fun HappyDropdownMenu(
         containerColor = MenuSpec.container(colors),
         tonalElevation = 0.dp,
         shadowElevation = MenuSpec.shadow,
-        border = if (colors.dark) BorderStroke(hairline(), colors.divider) else null,
+        border = if (colors.dark) BorderStroke(hairline(), MenuSpec.edge(colors)) else null,
         content = content,
     )
 }
@@ -149,7 +152,7 @@ fun HappyMenuItem(
 /** A hairline between a menu's groups, 6 above and below. */
 @Composable
 fun HappyMenuDivider() {
-    HorizontalDivider(Modifier.padding(vertical = 6.dp), thickness = hairline(), color = HappyTheme.colors.divider)
+    HorizontalDivider(Modifier.padding(vertical = 6.dp), thickness = hairline(), color = MenuSpec.divider(HappyTheme.colors))
 }
 
 /** A group's title over its rows: 13/18 secondary, level with the rows' text. */
