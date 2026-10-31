@@ -17,9 +17,10 @@ object Wire {
         id: String, workspaceId: String = "w$id", version: String = "01", title: String? = null, status: String = "idle",
         unread: Boolean = false, question: Boolean = false, subtask: Boolean = false, parent: String? = null,
         subtasks: List<JsonObject> = emptyList(), archivedAt: Long? = null, orderKey: String? = null, visible: Boolean = true,
-        updatedAt: Long = 2L,
+        updatedAt: Long = 2L, wait: Boolean = false,
     ) = buildJsonObject {
         put("id", id); put("workspaceId", workspaceId); put("version", version); put("status", status)
+        if (wait) put("wait", buildJsonObject { put("startedAt", 1L); put("dueAt", 99L) })
         put("parentAgentId", parent); put("subtask", subtask); put("userVisible", visible)
         put("title", title); put("titleStatus", if (title == null) "idle" else "ready")
         put("pendingQuestionId", if (question) "q$id" else null)

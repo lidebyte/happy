@@ -44,6 +44,8 @@ import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.PickerSheetSection
 import com.slopus.happy.ui.components.PickerSheetSpec
+import com.slopus.happy.ui.components.ShimmerSpec
+import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.conversation.ConversationPopup
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -55,6 +57,8 @@ internal fun ChatHeaderTitle(
     gitStatus: GitStatus?,
     onClick: (() -> Unit)?,
     subtitleOverride: String? = null,
+    /** The agent is working: the title shimmers, desktop's busy tab. */
+    working: Boolean = false,
 ) {
     val colors = HappyTheme.colors
     val header = remember(session?.metadata, gitStatus) { resolveChatHeaderGit(session?.metadata, gitStatus) }
@@ -73,12 +77,12 @@ internal fun ChatHeaderTitle(
             ),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(
+        ShimmerText(
             text = title.ifEmpty { subtitle.orEmpty() },
             style = HeaderSpec.title,
-            color = colors.header.tint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            baseColor = colors.header.tint,
+            highlightColor = ShimmerSpec.sheen(colors.header.tint, colors.header.background),
+            shimmering = working,
             modifier = Modifier.testTag(HeaderTags.TITLE),
         )
         if (subtitle != null || git != null) {

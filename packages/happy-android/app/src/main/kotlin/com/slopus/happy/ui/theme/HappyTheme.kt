@@ -11,6 +11,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.slopus.happy.ui.components.ProvideShimmerClock
 
 /** Spacing, radius and icon scales shared by both themes (theme.ts `sharedSpacing`). */
 @Immutable
@@ -96,6 +97,7 @@ fun HappyTheme(
         )
     }
     CompositionLocalProvider(LocalHappyColors provides colors) {
-        MaterialTheme(colorScheme = scheme, content = content)
+        // One clock for every shimmer under the theme: a screen of working rows is one frame loop.
+        ProvideShimmerClock { MaterialTheme(colorScheme = scheme, content = content) }
     }
 }

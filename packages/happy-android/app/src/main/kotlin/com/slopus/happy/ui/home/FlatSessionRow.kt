@@ -50,6 +50,7 @@ import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.AvatarBadgeLocation
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.ShimmerSpec
 import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.hairline
@@ -201,17 +202,14 @@ fun FlatSessionRow(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.weight(1f).testTag(FlatRowTags.TITLE)) {
-                        if (presentation.shimmerTitle) {
-                            ShimmerText(text = name, style = FlatRowSpec.title, baseColor = colors.textSecondary, highlightColor = colors.text)
-                        } else {
-                            Text(
-                                text = name,
-                                style = FlatRowSpec.title,
-                                color = if (faded) colors.textSecondary else colors.text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                        val ink = if (faded) colors.textSecondary else colors.text
+                        ShimmerText(
+                            text = name,
+                            style = FlatRowSpec.title,
+                            baseColor = ink,
+                            highlightColor = ShimmerSpec.sheen(ink, if (selected) colors.surfaceSelected else flatListBackground(colors)),
+                            shimmering = presentation.shimmerTitle,
+                        )
                     }
                     TopRight(timestamp, presentation.topRight, session.state)
                 }
