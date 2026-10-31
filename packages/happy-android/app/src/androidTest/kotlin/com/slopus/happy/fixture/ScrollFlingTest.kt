@@ -164,7 +164,7 @@ class ScrollFlingTest {
         var feed by mutableStateOf(feed(0, Random(1)))
         val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Fixture", agent = true, active = true)))
         content {
-            HappyTheme { AgentHomeScreen("Fixture", feed, AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}), now = now) }
+            HappyTheme { AgentHomeScreen("Fixture", feed, AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {})) }
         }
         // Every subtask shows: nothing on home folds.
         log("home: ${feed.rows.size} feed rows")
@@ -265,7 +265,7 @@ class ScrollFlingTest {
         val list = LazyListState(firstVisibleItemIndex = 70, firstVisibleItemScrollOffset = 24)
         content {
             HappyTheme {
-                AgentHomeList(agentHomeItems(current), list, now, {}, PaddingValues(0.dp), Modifier)
+                AgentHomeList(agentHomeItems(current), list, {}, PaddingValues(0.dp), Modifier)
             }
         }
         fun describe() = "first=${list.firstVisibleItemIndex}:${list.firstVisibleItemScrollOffset}, scrolling=${list.isScrollInProgress}, " +

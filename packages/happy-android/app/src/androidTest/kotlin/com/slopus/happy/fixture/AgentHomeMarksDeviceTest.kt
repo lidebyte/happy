@@ -108,7 +108,7 @@ class AgentHomeMarksDeviceTest {
         val pictures = AgentPictures("fx-connection") { picture(Color.rgb(255, 196, 61)) }
         rule.setContent {
             CompositionLocalProvider(LocalAgentPictures provides pictures, LocalAnimatedAvatars provides animated) {
-                HappyTheme { AgentHomeScreen("Studio", feed, AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}), now = NOW) }
+                HappyTheme { AgentHomeScreen("Studio", feed, AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {})) }
             }
         }
         rule.waitForIdle()
