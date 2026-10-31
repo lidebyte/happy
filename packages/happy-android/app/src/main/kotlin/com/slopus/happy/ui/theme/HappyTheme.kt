@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -66,6 +67,9 @@ fun HappyTheme(
         ThemePreference.Dark -> true
     }
     val colors = if (dark) DarkColors else LightColors
+    // Every container is one of Happy's neutrals, so menus, FABs, sheets and
+    // selections in stock Material components never pick up Material's
+    // default lavender; tonal elevation adds no tint.
     val scheme = if (dark) {
         darkColorScheme(
             primary = colors.text,
@@ -78,7 +82,22 @@ fun HappyTheme(
             surfaceContainerHigh = colors.surfaceHigh,
             surfaceContainerHighest = colors.surfaceHighest,
             outlineVariant = colors.divider,
+            outline = colors.textSecondary,
             error = colors.textDestructive,
+            surfaceTint = colors.surface,
+            surfaceVariant = colors.surfaceHigh,
+            surfaceContainerLowest = colors.grouped.background,
+            surfaceContainerLow = colors.surface,
+            surfaceContainer = if (colors.dark) colors.surfaceHigh else colors.surface,
+            primaryContainer = colors.surfaceHighest,
+            onPrimaryContainer = colors.text,
+            secondary = colors.textSecondary,
+            onSecondary = colors.surface,
+            secondaryContainer = colors.surfaceSelected,
+            onSecondaryContainer = colors.text,
+            tertiaryContainer = colors.surfaceHighest,
+            onTertiaryContainer = colors.text,
+            scrim = Color.Black,
         )
     } else {
         lightColorScheme(
@@ -92,7 +111,22 @@ fun HappyTheme(
             surfaceContainerHigh = colors.surfaceHigh,
             surfaceContainerHighest = colors.surfaceHighest,
             outlineVariant = colors.divider,
+            outline = colors.textSecondary,
             error = colors.textDestructive,
+            surfaceTint = colors.surface,
+            surfaceVariant = colors.surfaceHigh,
+            surfaceContainerLowest = colors.grouped.background,
+            surfaceContainerLow = colors.surface,
+            surfaceContainer = if (colors.dark) colors.surfaceHigh else colors.surface,
+            primaryContainer = colors.surfaceHighest,
+            onPrimaryContainer = colors.text,
+            secondary = colors.textSecondary,
+            onSecondary = colors.surface,
+            secondaryContainer = colors.surfaceSelected,
+            onSecondaryContainer = colors.text,
+            tertiaryContainer = colors.surfaceHighest,
+            onTertiaryContainer = colors.text,
+            scrim = Color.Black,
         )
     }
     CompositionLocalProvider(LocalHappyColors provides colors) {

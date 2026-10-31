@@ -56,6 +56,7 @@ import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.theme.appWeight
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -244,7 +245,7 @@ private fun TabChip(
 @Composable
 private fun TabLabel(text: String, selected: Boolean, shimmer: Boolean, modifier: Modifier) {
     val colors = HappyTheme.colors
-    val style = if (selected) WorktreeTabSpec.tabText.copy(fontWeight = FontWeight.SemiBold) else WorktreeTabSpec.tabText
+    val style = if (selected) WorktreeTabSpec.tabText.copy(fontWeight = appWeight(FontWeight.SemiBold)) else WorktreeTabSpec.tabText
     if (shimmer) {
         ShimmerText(text, style, baseColor = colors.textSecondary, highlightColor = colors.header.tint, modifier = modifier)
     } else {
