@@ -24,6 +24,7 @@ import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.files.ChangesTags
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.home.HomeDockTags
@@ -269,8 +270,8 @@ class TabletShellTest {
         rule.onAllNodesWithTag(TabletSidebarTags.SIDEBAR, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithTag(TabletShellTags.HEADER, useUnmergedTree = true).assertCountEquals(0)
         rule.node(AccountMenuTags.BUTTON).assertExists()
-        rule.node(HomeDockTags.DOCK).assertExists()
-        assertDp("home row from the left edge", 0, rule.node(FlatRowTags.ROW).bounds.left)
+        rule.node(HomeTags.COMPOSE).assertExists()
+        assertDp("home row inset in its card", HomeCardSpec.inset, rule.node(FlatRowTags.ROW).bounds.left)
         rule.node(FlatRowTags.ROW).performClick()
         waitFor(ChatScreenTags.SCREEN)
         assertDp("the chat keeps its back button", 48, rule.node(HeaderTags.LEFT).bounds.let { it.right - it.left })

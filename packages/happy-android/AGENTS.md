@@ -120,9 +120,11 @@ win:
   drop-down of the relay accounts and agent connections (avatar and
   name each, a check on the open one), then one "Add"
   (`ui/home/AccountMenu.kt`); picking one switches
-  (`AppGraph.open`). Settings and then compose (far right) on the right.
-  No logo, filter menu (grouping is in Appearance) or centred "Sessions"
-  title; an unhealthy connection shows centred. One account is open at a
+  (`AppGraph.open`). Settings on the right. The legacy home and agent
+  home share one bar (`AgentTopBar`, `BarTitle`): the account's name as
+  the title, with an unhealthy connection under it. No logo, filter menu
+  (grouping is in Appearance) or "Sessions" title. Compose is a FAB at the
+  bottom right of both homes (`ComposeFab`); home has no text input. One account is open at a
   time: a Happy account or an agent connection (`openAgentId`); each has
   its own back stack. **Add** opens the scanner straight away (the
   app's one `LocalAddFlow`, the same as the first screen's Connect;
@@ -158,7 +160,20 @@ win:
 - **Compose:** from home it opens an empty new chat; from a chat it
   replaces that chat with an empty one, animated, with Back going to home.
   The empty chat becomes the real session in place on the first send, with
-  no route change (not happy-app's draft route then navigate).
+  no route change (not happy-app's draft route then navigate). On a
+  Happy account the empty chat is `SessionRoute("compose-chat:<uuid>")`
+  (`ui/chat/ComposeChat.kt`, iOS's LegacyComposeStart): its composer
+  writes the account's new-session draft, a pill names the machine and
+  folder it will start on, and its first send starts the session with
+  that text and images; the screen then shows that session. A refused or
+  failed start says why and keeps the text; leaving before the computer
+  answers stops the start and the draft stays. A bot is made on the
+  new-session screen, reached from the pill's menu.
+- **Home cards:** the legacy home's rows sit in the agent home's inset
+  cards (`HomeCardRow`: 16 in, radius 26, 24 between cards, hairlines
+  inside). Day and section headings become gaps; a computer heads its
+  cards only when there is more than one; the archive is one card under
+  its toggle. Rows show no timestamp.
 - **Fonts:** the system font for all text, the platform monospace
   (`FontFamily.Monospace`) for code. Not IBM Plex.
 - **Home rows** have strict, precomputed heights, per row kind and font
@@ -465,8 +480,9 @@ graph over the same database and keys for process death.
 
 - Kept through both: the open screen (the nav back stack is saved), the
   chat's composer draft (the session composer's mirror is in the
-  database), the chat list's scroll position, the home dock's text and
-  focus (`rememberSaveable`), and an open composer or dock picker.
+  database), the chat list's scroll position, a compose chat's text (the
+  new-session draft is stored) and the session it started
+  (`rememberSaveable`), and an open composer or picker.
 - Kept through a recreation only: Restore's QR request (a ViewModel), or
   its failure with Retry; a recreation never starts a new request.
 - Lost, as in happy-app: pending chats (memory only), open alerts and

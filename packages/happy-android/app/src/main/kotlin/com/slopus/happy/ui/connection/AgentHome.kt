@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,11 +32,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -199,7 +200,7 @@ fun AgentHomeScreen(
                 navigationIcon = {
                     Box(Modifier.padding(horizontal = 4.dp)) { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) }
                 },
-                title = { BarTitle(name, status) },
+                title = { BarTitle(name, barStatus(status), AgentHomeTags.TITLE, AgentHomeTags.STATUS) },
                 actions = {
                     BarIconButton(Ionicon.SearchOutline, stringResource(R.string.agent_search_open), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
                     BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
@@ -249,21 +250,7 @@ fun AgentHomeScreen(
                     bottom = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance)) },
                 )
             }
-            if (feed.loaded && !searching) {
-                // At the end of the content column, so on a tablet it stays with the rows.
-                Box(Modifier.align(Alignment.BottomCenter).contentMaxWidth(LocalWindowLayout.current)) {
-                    FloatingActionButton(
-                        onClick = actions.onCompose,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .windowInsetsPadding(WindowInsets.navigationBars)
-                            .padding(AgentHomeSpec.fabMargin)
-                            .testTag(AgentHomeTags.COMPOSE),
-                    ) {
-                        Icon(Ionicon.CreateOutline, 24.dp, LocalContentColor.current, contentDescription = stringResource(R.string.home_compose))
-                    }
-                }
-            }
+            if (feed.loaded && !searching) ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE)
             if (searching && query.isNotBlank()) {
                 // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
                 Box(
@@ -312,45 +299,76 @@ private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSea
 }
 
 /**
- * The agent's name, the bar's title. While the link isn't up, how it
- * stands (connecting, offline, removed, update required) follows the name
- * on the same line, so the name never moves; online says nothing.
+ * How a home's link stands, after its name in the bar: connecting,
+ * offline, removed and the like; null while all is well, which says nothing.
+ */
+@Immutable
+data class BarStatus(val text: String, val color: Color, val pulsing: Boolean = false)
+
+/** How the agent connection stands, for its bar. */
+@Composable
+private fun barStatus(status: AgentLinkStatus): BarStatus? {
+    if (status == AgentLinkStatus.Connected) return null
+    val colors = HappyTheme.colors
+    val color = when (status) {
+        AgentLinkStatus.Connecting -> colors.status.connecting
+        AgentLinkStatus.Offline -> colors.status.disconnected
+        else -> colors.status.error
+    }
+    val text = stringResource(
+        when (status) {
+            AgentLinkStatus.Connecting -> R.string.status_connecting
+            AgentLinkStatus.Offline -> R.string.status_offline
+            AgentLinkStatus.Revoked -> R.string.agent_home_status_revoked
+            else -> R.string.agent_home_status_update
+        },
+    )
+    return BarStatus(text, color, pulsing = status == AgentLinkStatus.Connecting)
+}
+
+/**
+ * A home's bar title: the agent's or account's [name], 18 semibold. While
+ * the link isn't up, how it stands ([status]) follows the name on the same
+ * line, so the name never moves; all well says nothing.
  */
 @Composable
-private fun BarTitle(name: String, status: AgentLinkStatus) {
-    val colors = HappyTheme.colors
+internal fun BarTitle(name: String, status: BarStatus?, titleTag: String, statusTag: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             name,
             style = AgentHomeSpec.barTitle,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false).testTag(AgentHomeTags.TITLE),
+            modifier = Modifier.weight(1f, fill = false).testTag(titleTag),
         )
-        if (status != AgentLinkStatus.Connected) {
-            val color = when (status) {
-                AgentLinkStatus.Connecting -> colors.status.connecting
-                AgentLinkStatus.Offline -> colors.status.disconnected
-                else -> colors.status.error
-            }
+        if (status != null) {
             Spacer(Modifier.width(10.dp))
-            Row(modifier = Modifier.testTag(AgentHomeTags.STATUS), verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(color = color, pulsing = status == AgentLinkStatus.Connecting, size = 6.dp)
+            Row(modifier = Modifier.testTag(statusTag), verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(color = status.color, pulsing = status.pulsing, size = 6.dp)
                 Spacer(Modifier.width(6.dp))
-                Text(
-                    stringResource(
-                        when (status) {
-                            AgentLinkStatus.Connecting -> R.string.status_connecting
-                            AgentLinkStatus.Offline -> R.string.status_offline
-                            AgentLinkStatus.Revoked -> R.string.agent_home_status_revoked
-                            else -> R.string.agent_home_status_update
-                        },
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = color,
-                    maxLines = 1,
-                )
+                Text(status.text, style = MaterialTheme.typography.labelMedium, color = status.color, maxLines = 1)
             }
+        }
+    }
+}
+
+/**
+ * A home's compose: a floating button at the bottom end of the content
+ * column (so on a tablet it stays with the rows), clear of the navigation
+ * bar. Put it last in a box over the page.
+ */
+@Composable
+internal fun BoxScope.ComposeFab(onClick: () -> Unit, tag: String) {
+    Box(Modifier.align(Alignment.BottomCenter).contentMaxWidth(LocalWindowLayout.current)) {
+        FloatingActionButton(
+            onClick = onClick,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(AgentHomeSpec.fabMargin)
+                .testTag(tag),
+        ) {
+            Icon(Ionicon.CreateOutline, 24.dp, LocalContentColor.current, contentDescription = stringResource(R.string.home_compose))
         }
     }
 }

@@ -94,6 +94,7 @@ internal fun ChatDock(
     onPanelPositioned: ((LayoutCoordinates) -> Unit)?,
     modifier: Modifier,
     composerModifier: Modifier,
+    autoFocus: Boolean = false,
 ) {
     Column(modifier.testTag(ChatScreenTags.DOCK).fillMaxWidth()) {
         if (inactiveHint != null) {
@@ -108,7 +109,7 @@ internal fun ChatDock(
             }
         }
         if (activityBar != null) AnimatedFade(showDetails) { activityBar() }
-        ChatComposerFor(state, session, draft, actions, now, modes, showDetails, onPanelPositioned, composerModifier)
+        ChatComposerFor(state, session, draft, actions, now, modes, showDetails, onPanelPositioned, composerModifier, autoFocus)
     }
 }
 
@@ -131,6 +132,7 @@ private fun ChatComposerFor(
     showDetails: Boolean,
     onPanelPositioned: ((LayoutCoordinates) -> Unit)?,
     modifier: Modifier,
+    autoFocus: Boolean,
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
@@ -180,7 +182,9 @@ private fun ChatComposerFor(
     ChatComposer(
         text = draft,
         onTextChange = actions.onDraftChange,
-        status = rememberComposerStatus(sessionState, state.activeAt, now),
+        // A chat with no session yet (being started) has no status to tell.
+        status = if (state.session != null) rememberComposerStatus(sessionState, state.activeAt, now) else null,
+        autoFocus = autoFocus,
         primary = primary,
         aborting = aborting,
         onPrimary = {

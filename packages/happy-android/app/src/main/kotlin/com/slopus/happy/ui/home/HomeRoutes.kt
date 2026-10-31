@@ -30,6 +30,7 @@ import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.chat.SessionRoute
+import com.slopus.happy.ui.chat.composeChat
 import com.slopus.happy.ui.components.AvatarSettings
 import com.slopus.happy.ui.components.LocalAvatarSettings
 import com.slopus.happy.ui.files.SessionChangesRoute
@@ -58,8 +59,11 @@ class HomeNavigation(
     val onOpenSession: (String) -> Unit,
     val onOpenMachine: (String) -> Unit,
     val onTroubleshoot: () -> Unit,
+    /** The new-session screen: the tablet's, and new/index.tsx's link. */
     val onNewSession: () -> Unit,
     val onDetails: (String) -> Unit,
+    /** The phone's compose: an empty chat whose first send starts the session. */
+    val onCompose: () -> Unit = onNewSession,
 ) {
     companion object {
         fun of(graph: AppGraph, nav: NavHostController, onOpenSession: (String) -> Unit, onTroubleshoot: () -> Unit) = HomeNavigation(
@@ -71,6 +75,7 @@ class HomeNavigation(
             // router.navigate('/new'): a second tap while it is on top stays one screen.
             onNewSession = { nav.navigate(NewSessionRoute) { launchSingleTop = true } },
             onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
+            onCompose = { nav.composeChat() },
         )
     }
 }
@@ -92,7 +97,7 @@ fun NavGraphBuilder.homeRoutes(
         if (LocalHomeInSidebar.current) {
             Box(Modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(HomeTags.TABLET_BLANK))
         } else {
-            HomeListHost(graph, remember(nav) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot) }, withDock = true) { host ->
+            HomeListHost(graph, remember(nav) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot) }, phone = true) { host ->
                 HomeScreen(
                     state = host.state,
                     connectionStatus = host.connectionStatus,
@@ -103,8 +108,6 @@ fun NavGraphBuilder.homeRoutes(
                     offlineContent = { computers, onShowArchived ->
                         LinkComputerChecklist(graph, computers = computers, onTroubleshoot = host.navigation.onTroubleshoot, onShowArchived = onShowArchived)
                     },
-                    dock = host.dock?.state,
-                    dockActions = host.dock?.actions,
                     accounts = rememberAccountMenu(graph),
                     listState = host.listState,
                     syncing = host.syncing,

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,10 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,13 +53,16 @@ import com.slopus.happy.agent.AgentFeedSection
 import com.slopus.happy.agent.AgentPictures
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.agent.FolderMark
+import com.slopus.happy.ui.components.HomeCardPlace
+import com.slopus.happy.ui.components.HomeCardRow
+import com.slopus.happy.ui.components.HomeCardSpec
+import com.slopus.happy.ui.components.HomeCardTags
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
-import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.rememberThumbHash
 import com.slopus.happy.ui.home.BlockedDotColor
@@ -87,7 +89,7 @@ object AgentHomeTags {
     fun row(key: String) = "agentHome.row.$key"
     const val ROW_TITLE = "agentHome.rowTitle"
     const val ROW_MARK = "agentHome.rowMark"
-    const val ROW_DIVIDER = "agentHome.rowDivider"
+    const val ROW_DIVIDER = HomeCardTags.DIVIDER
 }
 
 /**
@@ -103,11 +105,11 @@ object AgentHomeTags {
  */
 object AgentHomeSpec {
     /** The cards' inset from the window's sides, their corners, and the room between two. */
-    val cardInset = 16.dp
-    val cardRadius = 26.dp
-    val cardGap = 24.dp
+    val cardInset = HomeCardSpec.inset
+    val cardRadius = HomeCardSpec.radius
+    val cardGap = HomeCardSpec.gap
     /** Above the first card. */
-    val contentTop = 8.dp
+    val contentTop = HomeCardSpec.contentTop
     /** A top-level mark's left edge, from its card's. */
     val markInset = 16.dp
     val paddingEnd = 16.dp
@@ -119,7 +121,7 @@ object AgentHomeSpec {
     /** A glyph's tile: the mark's square, rounded, the glyph smaller inside; a picture's rounding too. */
     val tileRadius = 8.dp
     val tileGlyph = 18.dp
-    val dot = 10.dp
+    val dot = HomeCardSpec.dot
     val cornerMinWidth = 48.dp
     /** The bar's title, the agent's name: smaller than Material's large title. */
     val barTitle = happyTextStyle(fontSize = 18, lineHeight = 24, weight = FontWeight.SemiBold)
@@ -321,44 +323,16 @@ fun LazyListScope.agentHomeRows(
     }
 }
 
-/**
- * One row's part of its card: the card's ground, its top corners rounded
- * on its first row and its bottom ones on its last, a pressed row's
- * highlight clipped to them, and the hairline under every row but the
- * last, from [content]'s title to the card's edge.
- */
+/** One row's part of its card ([HomeCardRow]), 48 high at the default font scale, the hairline from its title. */
 @Composable
 private fun CardRow(item: AgentHomeItem.Row, modifier: Modifier, content: @Composable () -> Unit) {
-    val colors = HappyTheme.colors
-    val radius = AgentHomeSpec.cardRadius
-    val shape = RoundedCornerShape(
-        topStart = if (item.first) radius else 0.dp,
-        topEnd = if (item.first) radius else 0.dp,
-        bottomStart = if (item.last) radius else 0.dp,
-        bottomEnd = if (item.last) radius else 0.dp,
-    )
-    Box(
-        modifier = modifier
-            .contentMaxWidth(LocalWindowLayout.current)
-            .height(AgentHomeSpec.rowHeight())
-            .testTag(AgentHomeTags.row(item.key))
-            .padding(horizontal = AgentHomeSpec.cardInset),
-    ) {
-        Box(Modifier.fillMaxSize().clip(shape).background(colors.surfaceHigh)) {
-            content()
-            if (!item.last) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = titleStart(item.row))
-                        .fillMaxWidth()
-                        .height(hairline())
-                        .testTag(AgentHomeTags.ROW_DIVIDER)
-                        .background(colors.divider),
-                )
-            }
-        }
-    }
+    HomeCardRow(
+        place = HomeCardPlace(item.first, item.last),
+        height = AgentHomeSpec.rowHeight(),
+        dividerStart = titleStart(item.row),
+        modifier = modifier,
+        tag = AgentHomeTags.row(item.key),
+    ) { content() }
 }
 
 /** Where a card row's title starts, from its card's edge: its level's lane, then its mark's when it wears one. */

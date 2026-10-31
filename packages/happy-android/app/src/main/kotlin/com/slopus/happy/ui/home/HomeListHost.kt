@@ -3,11 +3,10 @@ package com.slopus.happy.ui.home
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -41,8 +40,6 @@ class HomeListScope(
     val actions: HomeScreenActions,
     val update: HomeUpdate?,
     val navigation: HomeNavigation,
-    /** The phone home's new-session dock; null in the tablet sidebar. */
-    val dock: NewSessionDock?,
     /**
      * Where the list sits, held above the host so the breakpoint's swap of
      * phone list for sidebar list keeps the reader's place.
@@ -53,12 +50,12 @@ class HomeListScope(
 
 /**
  * The home list's state, row callbacks, session menus and their alerts and
- * sheets, around [content]. [withDock] (the phone home) adds the new-session
- * dock, which a project's "+" opens on a new workspace; without it (the tablet
- * sidebar) "+" prepares the workspace and opens the new-session screen.
+ * sheets, around [content]. On the [phone] home a project's "+" prepares a
+ * new workspace of it and opens an empty chat on it (compose); in the tablet
+ * sidebar it opens the new-session screen instead.
  */
 @Composable
-fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean = false, content: @Composable (HomeListScope) -> Unit) {
+fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = false, content: @Composable (HomeListScope) -> Unit) {
     val onOpenSession = navigation.onOpenSession
     val services = remember(graph) { HomeServices.of(graph) }
     val state by services.list.state.collectAsStateWithLifecycle()
@@ -89,28 +86,16 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
         onDuplicate = { duplicating = it },
         showAlert = showAlert,
     )
-    var dockFocused by rememberSaveable { mutableStateOf(false) }
-    val dock = if (withDock) {
-        rememberNewSessionDock(
-            graph,
-            focused = dockFocused,
-            onFocusChange = { dockFocused = it },
-            onStarted = onOpenSession,
-            showScrim = state?.rows?.isNotEmpty() == true,
-        )
-    } else {
-        null
-    }
     val context = LocalContext.current
-    // ProjectHomeList's "+": the dock (or the new-session screen) opens on a new workspace of that project.
-    val onCreateWorkspace = remember(services, context, withDock, navigation) {
+    // ProjectHomeList's "+": an empty chat (or the new-session screen) on a new workspace of that project.
+    val onCreateWorkspace = remember(services, context, phone, navigation) {
         { origin: WorkspaceOrigin ->
             services.newSession(context.applicationContext).prepareWorkspace(origin.machineId, origin.projectId, origin.path)
-            if (withDock) dockFocused = true else navigation.onNewSession()
+            if (phone) navigation.onCompose() else navigation.onNewSession()
         }
     }
     // SessionsList's requestReview(), once its list has sessions.
-    val reviewable = asksForReview(state, phone = withDock)
+    val reviewable = asksForReview(state, phone = phone)
     val reviewStrings = ReviewStrings(
         title = stringResource(R.string.review_enjoying_app),
         message = stringResource(R.string.review_feedback_prompt),
@@ -161,6 +146,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
             onWhatsNew = navigation.onWhatsNew,
             onSwitchAccount = { id -> graph.open(id) },
             onLinkComputer = connect::scan,
+            onCompose = navigation.onCompose,
         )
     }
 
@@ -179,9 +165,8 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
     }
 
     ProvideAvatarSettings(settings) {
-        content(HomeListScope(state, connection, settings.sessionListGrouping, callbacks, actions, update, navigation, dock, listState, syncing))
+        content(HomeListScope(state, connection, settings.sessionListGrouping, callbacks, actions, update, navigation, listState, syncing))
     }
-    dock?.dialogs?.invoke()
     duplicating?.let { session ->
         DuplicateSheet(
             source = session.forkSource(),
