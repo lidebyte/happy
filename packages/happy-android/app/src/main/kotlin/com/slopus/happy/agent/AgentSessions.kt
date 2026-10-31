@@ -36,7 +36,11 @@ class AgentSessions(
                 val gone = synchronized(sessions) { sessions.keys.filter { it !in ids }.map { sessions.remove(it)!! } }
                 gone.forEach { session ->
                     session.close()
-                    cacheFile(session.connectionId)?.delete()
+                    cacheFile(session.connectionId)?.let { file ->
+                        file.delete()
+                        // And the resources kept beside it (`AgentSession.keepResource`).
+                        file.parentFile?.listFiles { f -> f.name.startsWith(file.nameWithoutExtension + ".") }?.forEach { it.delete() }
+                    }
                 }
             }
         }

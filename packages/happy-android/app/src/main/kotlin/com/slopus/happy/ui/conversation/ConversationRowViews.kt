@@ -98,7 +98,7 @@ class ConversationRowActions(
     /** A presented item's bytes. */
     val loadMedia: suspend (MediaRef) -> ByteArray,
     /** Opens an artifact; null where this build has no viewer, and its card says where it opens. */
-    val onOpenArtifact: ((artifactId: String) -> Unit)? = null,
+    val onOpenArtifact: ((ConversationRow.Artifact) -> Unit)? = null,
     /** Shows one picture full screen. */
     val onOpenPicture: (bytes: ByteArray, cacheKey: String, name: String?) -> Unit = { _, _, _ -> },
     /** Opens a presented video or file in whatever on the phone reads it. */
@@ -162,7 +162,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                 icon = Ionicon.LayersOutline,
                 title = row.title.ifEmpty { stringResource(R.string.conversation_artifact) },
                 detail = stringResource(R.string.conversation_artifact_unavailable).takeIf { actions.onOpenArtifact == null },
-                onClick = actions.onOpenArtifact?.let { open -> { open(row.artifactId) } },
+                onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
                 modifier = content.testTag(ConversationRowTags.ARTIFACT),
             )
             is ConversationRow.Collaborator -> CollaboratorRow(row, content)

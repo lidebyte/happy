@@ -29,7 +29,6 @@ import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.chat.obj
 import com.slopus.happy.conversation.AgentInfo
-import com.slopus.happy.conversation.ArtifactView
 import com.slopus.happy.conversation.AgentRequest
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
@@ -41,6 +40,7 @@ import com.slopus.happy.conversation.NewTask
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.artifacts.openArtifact
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,9 +59,6 @@ import kotlinx.serialization.Serializable
 /** The connection's Chief of Staff chat, found when opened, with [prefix] waiting in its composer. */
 @Serializable data class ChiefOfStaffRoute(val connectionId: String, val prefix: String)
 
-/** One artifact of the computer this conversation is on. */
-@Serializable data class ArtifactRoute(val connectionId: String, val artifactId: String)
-
 /** A conversation's details. */
 @Serializable data class ConversationDetailsRoute(val connectionId: String, val agentId: String)
 
@@ -74,10 +71,6 @@ fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) 
     composable<ChiefOfStaffRoute> { entry ->
         val route = entry.toRoute<ChiefOfStaffRoute>()
         ChiefOfStaffEntry(graph, nav, route)
-    }
-    composable<ArtifactRoute> { entry ->
-        val route = entry.toRoute<ArtifactRoute>()
-        ArtifactEntry(graph, nav, route)
     }
     composable<ConversationDetailsRoute> { entry ->
         val route = entry.toRoute<ConversationDetailsRoute>()
@@ -236,7 +229,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                 onRetryFailure = conversation::retryFailure,
                 onAnswer = conversation::answer,
                 onLoadOlder = { retry -> conversation.loadOlder(retry) },
-                onOpenArtifact = { artifactId -> nav.navigate(ArtifactRoute(route.connectionId, artifactId)) },
+                onOpenArtifact = { row -> nav.openArtifact(route.connectionId, row.ref) },
                 onRetryLoad = conversation::retryLoad,
                 loadMedia = conversation::media,
                 onVisible = conversation::setVisible,
@@ -313,85 +306,4 @@ private fun ChiefOfStaffEntry(graph: AppGraph, nav: NavHostController, route: Ch
         }
     }
     ChiefOfStaffScreen(problem, onRetry = { attempt++ }, onBack = { nav.popBackStack() })
-}
-
-/**
- * One artifact, read through the connection this conversation is on, so
- * its own credential carries the request and nothing of it is handed to
- * anything else. Its pictures are read here; words are read here; a video
- * or document is handed to whatever on the phone reads it, through the
- * same one directory as a conversation's media. A read that fails, a
- * deleted artifact and an offline computer each say so, with Retry.
- */
-@Composable
-private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: ArtifactRoute) {
-    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
-    ArtifactRouteContent(session, route.artifactId, onBack = { nav.popBackStack() }) {
-        session?.let { ConversationApi(it.conversationRequest()) }
-    }
-}
-
-/**
- * [ArtifactEntry]'s body, moved out unchanged. [connection] is only a key:
- * when it changes, the artifact is read again (the session there); the loader
- * uses nothing of it. [api] makes a client each time one is needed, null for
- * a connection this device doesn't have. Internal, not private, only so the
- * instrumented harness (src/androidTest) drives this loader rather than a
- * copy of it.
- */
-@Composable
-internal fun ArtifactRouteContent(connection: Any?, artifactId: String, onBack: () -> Unit, api: () -> ConversationApi?) {
-    val unavailable = stringResource(R.string.conversation_unavailable)
-    val deleted = stringResource(R.string.conversation_artifact_deleted)
-    var attempt by rememberSaveable { mutableIntStateOf(0) }
-    val pictures = rememberPictureViewer()
-    val media = rememberMediaOpener()
-    val content by produceState<ArtifactContent>(ArtifactContent.Reading, connection, artifactId, attempt) {
-        value = ArtifactContent.Reading
-        val api = api()
-        if (api == null) {
-            value = ArtifactContent.Failed(unavailable)
-            return@produceState
-        }
-        value = try {
-            val artifact = api.readArtifact(artifactId)
-            when {
-                artifact == null -> ArtifactContent.Failed(unavailable)
-                artifact.deleted -> ArtifactContent.Failed(deleted)
-                else -> when (val view = artifact.view()) {
-                    is ArtifactView.Words -> {
-                        val entry = artifact.entryFile
-                        val words = entry?.let { String(api.artifactFile(artifact.id, artifact.version.toString(), it.path), Charsets.UTF_8) }.orEmpty()
-                        ArtifactContent.Ready(artifact, ArtifactView.Words(words), emptyMap())
-                    }
-                    is ArtifactView.Pictures -> {
-                        val bytes = view.files.associate { it.path to api.artifactFile(artifact.id, artifact.version.toString(), it.path) }
-                        ArtifactContent.Ready(artifact, view, bytes)
-                    }
-                    else -> ArtifactContent.Ready(artifact, view, emptyMap())
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            ArtifactContent.Failed(Conversation.describe(e))
-        }
-    }
-    val ready = content as? ArtifactContent.Ready
-    val openable = (ready?.view as? ArtifactView.Openable)?.file
-    ArtifactScreen(
-        content = content,
-        onBack = onBack,
-        onRetry = { attempt++ },
-        onOpenPicture = pictures::show,
-        onOpenFile = { file ->
-            val artifact = ready?.artifact ?: return@ArtifactScreen
-            val key = "artifact-${artifact.id}-${artifact.version}"
-            media.open(key, MediaItem("file", file.path, file.mimeType)) {
-                api()!!.artifactFile(artifact.id, artifact.version.toString(), file.path)
-            }
-        },
-        opening = openable?.let { media.state("artifact-${ready.artifact.id}-${ready.artifact.version}") },
-    )
-    PictureViewerHost(pictures)
 }

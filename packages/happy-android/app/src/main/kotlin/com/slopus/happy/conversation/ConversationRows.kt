@@ -63,8 +63,17 @@ sealed interface ConversationRow {
     /** Pictures, videos and files a tool presented, read on demand. */
     data class Media(override val key: String, val items: List<MediaRef>) : ConversationRow
 
-    /** An artifact a tool made or changed. */
-    data class Artifact(override val key: String, val artifactId: String, val title: String, val type: String?) : ConversationRow
+    /** An artifact a tool made or changed; `shows: "latest"` follows it, else it opens [version]. */
+    data class Artifact(
+        override val key: String,
+        val artifactId: String,
+        val title: String,
+        val type: String?,
+        val version: Int? = null,
+        val shows: String? = null,
+    ) : ConversationRow {
+        val ref: com.slopus.happy.artifacts.ArtifactRef get() = com.slopus.happy.artifacts.ArtifactRef.presented(artifactId, version, type, title, shows)
+    }
 
     /** Another agent writing to this one: a collaborator or subtask reporting. */
     data class Collaborator(override val key: String, val senderAgentId: String, val text: String, val blocks: List<MarkdownBlock>) : ConversationRow
@@ -154,7 +163,7 @@ class ConversationRowBuilder {
                 } else {
                     listOf(ConversationRow.Media(key, p.items.mapIndexed { index, item -> MediaRef(call.id, index, item) }))
                 }
-                is Presentation.Artifact -> listOf(ConversationRow.Artifact(key, p.artifactId, p.title.orEmpty(), p.artifactType))
+                is Presentation.Artifact -> listOf(ConversationRow.Artifact(key, p.artifactId, p.title.orEmpty(), p.artifactType, p.version, p.shows))
                 is Presentation.Command -> tool(p.command, buildJsonObject { put("command", p.command); put("cmd", p.command) })
                 is Presentation.Exploration -> p.operations.joinToString(", ").ifEmpty { null }.let { detail ->
                     tool(detail, detail?.let { buildJsonObject { put("file_path", it); put("path", it); put("pattern", it) } })

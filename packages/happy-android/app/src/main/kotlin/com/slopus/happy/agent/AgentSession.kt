@@ -293,6 +293,32 @@ class AgentSession internal constructor(
         }
     }
 
+    /**
+     * A resource kept beside the catalog for offline use (iOS's
+     * `cachedResource` and `keepResource`), by [key]: the artifact list's
+     * first page. Deleted with the catalog when the connection goes.
+     */
+    fun cachedResource(key: String): JsonObject? = try {
+        resourceFile(key)?.takeIf { it.exists() }?.readText()?.let { AgentClient.json.parseToJsonElement(it) as? JsonObject }
+    } catch (_: Exception) {
+        null
+    }
+
+    fun keepResource(key: String, value: JsonObject) {
+        val file = resourceFile(key) ?: return
+        try {
+            file.parentFile?.mkdirs()
+            val temp = File(file.path + ".tmp")
+            temp.writeText(value.toString())
+            if (!temp.renameTo(file)) temp.delete()
+        } catch (_: Exception) {
+            // Offline misses this page; the next read keeps it.
+        }
+    }
+
+    private fun resourceFile(key: String): File? =
+        cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + "." + key.filter(Char::isLetterOrDigit) + ".json") }
+
     private fun readCache(): AgentCatalog? = try {
         cacheFile?.takeIf { it.exists() }?.readText()?.let { AgentClient.json.decodeFromString(AgentCatalog.serializer(), it) }
     } catch (_: Exception) {
