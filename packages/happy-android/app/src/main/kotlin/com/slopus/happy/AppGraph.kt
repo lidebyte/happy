@@ -17,6 +17,7 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.auth.SecureStoreCredentialStore
 import com.slopus.happy.auth.SecureStoreKeys
+import com.slopus.happy.config.LiveAvatarsSetting
 import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
@@ -99,6 +100,9 @@ class AppGraph(
         defaultServerUrl,
     )
     val localSettings = LocalSettings(context.getSharedPreferences(LocalSettings.PREFS_NAME, Context.MODE_PRIVATE))
+
+    /** Animated Avatars, kept on this phone for every account (not cleared with local settings). */
+    val liveAvatars = LiveAvatarsSetting(context.getSharedPreferences(LiveAvatarsSetting.PREFS_NAME, Context.MODE_PRIVATE))
 
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

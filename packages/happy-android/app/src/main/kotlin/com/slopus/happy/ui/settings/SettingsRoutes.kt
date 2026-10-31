@@ -92,6 +92,7 @@ fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
 @Composable
 private fun Appearance(graph: AppGraph, nav: NavHostController) {
     val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
+    val animatedAvatars by graph.liveAvatars.enabled.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val automatic = stringResource(R.string.settings_language_automatic)
     val preferred = settings.preferredLanguage
@@ -108,6 +109,8 @@ private fun Appearance(graph: AppGraph, nav: NavHostController) {
         onSettingsChange = graph.settings::change,
         languageDetail = languageDetail,
         onLanguage = { nav.navigate(LanguageRoute) },
+        animatedAvatars = animatedAvatars,
+        onAnimatedAvatarsChange = graph.liveAvatars::set,
     )
 }
 
