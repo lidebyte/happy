@@ -33,10 +33,14 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Android's WebView takes one proxy for the whole app (`ProxyController`),
  * where WebKit takes one per page, so one listener serves every open
- * [Page]. A request reaches the page it belongs to by its target: an
- * artifact page's synthetic origin is unique to that page, and anything
- * else goes through the newest page's workspace. A client that is not a
- * WebView (the picture fetcher's OkHttp) authenticates as its own page.
+ * [Page], and a request reaches its page by its credentials. Where WebView
+ * has profiles (`MULTI_PROFILE`), each page's WebView is in a profile of its
+ * own, whose network context answers the 407 with that page's credentials
+ * only, so pages are as separate as iOS's. Without profiles, WebViews share
+ * one credential and a request reaches its page by its target: an artifact
+ * page's synthetic origin is unique to that page, and anything else goes
+ * through the newest page's workspace. A client that is not a WebView (the
+ * picture fetcher's OkHttp) always authenticates as its own page.
  *
  * Chromium asks a proxy for plain `http` in absolute form (`GET http://host/p`)
  * and tunnels everything else with CONNECT; both are handled. Every local
@@ -65,7 +69,14 @@ class BrowserProxy(parent: CoroutineScope) {
         class Workspace(override val client: AgentClient, val workspace: suspend () -> String) : Scope
     }
 
-    inner class Page internal constructor(val scope: Scope, internal val webView: Boolean) {
+    /**
+     * One open page. [webView] pages are WebViews, which need the app-wide
+     * proxy override; an [isolated] page answers the proxy with its own
+     * [username] and [password] (a fetcher, or a WebView in a profile of its
+     * own) and reaches only what its scope allows. The others share
+     * [webUsername] and are told apart by their targets.
+     */
+    inner class Page internal constructor(val scope: Scope, internal val webView: Boolean, internal val isolated: Boolean) {
         val username = token()
         val password = token()
         internal val authorization = basic(username, password)
@@ -113,10 +124,14 @@ class BrowserProxy(parent: CoroutineScope) {
     val webPassword = token()
     private val webAuthorization = basic(webUsername, webPassword)
 
-    /** Opens [scope] for a page (or, [webView] false, a fetcher with its own credentials), starting the listener if needed. */
+    /**
+     * Opens [scope] for a page, starting the listener if needed: a WebView
+     * that shares the web credentials, one [isolated] in its own profile, or
+     * ([webView] false) a fetcher, which always has its own.
+     */
     @Synchronized
-    fun open(scope: Scope, webView: Boolean = true): Page {
-        val page = Page(scope, webView)
+    fun open(scope: Scope, webView: Boolean = true, isolated: Boolean = !webView): Page {
+        val page = Page(scope, webView, isolated)
         pages += page
         if (server == null) start()
         return page
@@ -183,15 +198,16 @@ class BrowserProxy(parent: CoroutineScope) {
 
     private fun authenticate(head: HttpHead): Page? {
         val given = head.value("Proxy-Authorization") ?: return null
-        pages.firstOrNull { !it.webView && it.authorization == given }?.let { return it }
-        // A WebView's own page is found by its target; this is just any open one.
-        return if (given == webAuthorization) pages.lastOrNull { it.webView } else null
+        pages.firstOrNull { it.isolated && it.authorization == given }?.let { return it }
+        // A shared WebView's own page is found by its target; this is just any open one.
+        return if (given == webAuthorization) pages.lastOrNull { it.webView && !it.isolated } else null
     }
 
     /** The page that owns [authority]: an artifact or live page's own origin, else [fallback]. */
     private fun owner(authority: BrowserPolicy.Authority, fallback: Page): Page {
-        if (!fallback.webView) return fallback
+        if (fallback.isolated) return fallback
         return pages.lastOrNull { page ->
+            !page.isolated &&
             when (val scope = page.scope) {
                 is Scope.Artifact -> scope.authority == authority
                 is Scope.Live -> scope.authority == authority

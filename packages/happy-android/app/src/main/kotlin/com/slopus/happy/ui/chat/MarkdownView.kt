@@ -34,7 +34,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +54,7 @@ import com.slopus.happy.chat.markdown.isHttpMarkdownLink
 import com.slopus.happy.chat.markdown.tokenizeCode
 import com.slopus.happy.ui.components.MarkdownImage
 import com.slopus.happy.ui.components.MermaidView
+import com.slopus.happy.ui.browser.webLinkGestures
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -148,8 +151,8 @@ fun MarkdownView(
     Column(modifier = modifier) {
         for (block in blocks) {
             when (block) {
-                is MarkdownBlock.Text -> Text(
-                    text = rememberSpans(block.content),
+                is MarkdownBlock.Text -> SpansText(
+                    spans = block.content,
                     style = MarkdownSpec.text,
                     color = HappyTheme.colors.text,
                     modifier = Modifier
@@ -158,8 +161,8 @@ fun MarkdownView(
                 )
                 is MarkdownBlock.Header -> {
                     val (style, margins) = MarkdownSpec.headers[(block.level - 1).coerceIn(0, 5)]
-                    Text(
-                        text = rememberSpans(block.content),
+                    SpansText(
+                        spans = block.content,
                         style = style,
                         color = HappyTheme.colors.text,
                         modifier = Modifier.padding(top = margins.first, bottom = margins.second).testTag(MarkdownTags.HEADER),
@@ -192,6 +195,23 @@ private fun rememberSpans(spans: List<MarkdownSpan>): AnnotatedString {
     val text = HappyTheme.colors.text
     val links = LocalMarkdownLinks.current
     return remember(spans, text, links) { spansToAnnotatedString(spans, links) }
+}
+
+/**
+ * Rendered spans as text; its web links tap and long-press through the
+ * screen's [LinkOpener][com.slopus.happy.ui.browser.LinkOpener] where there is one.
+ */
+@Composable
+private fun SpansText(spans: List<MarkdownSpan>, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+    val text = rememberSpans(spans)
+    val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    Text(
+        text = text,
+        style = style,
+        color = color,
+        onTextLayout = { layout.value = it },
+        modifier = modifier.webLinkGestures(text, layout),
+    )
 }
 
 /** Where MarkdownView's links go when its caller handles them; null for the system's (http(s) only). */
@@ -233,7 +253,7 @@ private fun ListBlock(items: List<Triple<String, Int, List<MarkdownSpan>>>) {
                     color = color,
                     modifier = Modifier.padding(end = MarkdownSpec.bulletGap, top = 1.dp),
                 )
-                Text(text = rememberSpans(spans), style = MarkdownSpec.text, color = color, modifier = Modifier.weight(1f))
+                SpansText(spans = spans, style = MarkdownSpec.text, color = color, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -422,8 +442,8 @@ private fun TableRow(cells: List<List<MarkdownSpan>>, widths: List<Dp>, header: 
                         .background(if (header) colors.surfaceHigh else Color.Transparent)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    Text(
-                        text = rememberSpans(spans),
+                    SpansText(
+                        spans = spans,
                         style = if (header) MarkdownSpec.tableHeaderText else MarkdownSpec.tableCellText,
                         color = colors.text,
                     )

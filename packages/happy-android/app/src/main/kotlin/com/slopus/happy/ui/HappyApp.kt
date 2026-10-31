@@ -23,6 +23,12 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.push.PushRegistrationEffect
 import com.slopus.happy.payments.PaywallHost
 import com.slopus.happy.ui.artifacts.AgentArtifactsRoute
+import com.slopus.happy.ui.artifacts.BrowserRoute
+import com.slopus.happy.ui.artifacts.computerName
+import com.slopus.happy.ui.browser.LinkOpener
+import com.slopus.happy.ui.browser.ProvideLinks
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
@@ -103,6 +109,8 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
               // Add (the first screen's Connect, the account menu's Add): scan, then route the code.
               val add = rememberAddFlow(graph)
               CompositionLocalProvider(LocalAddFlow provides add) {
+                // Links: through the open agent connection in its browser, or as ever on a Happy account.
+                ProvideLinks(rememberLinks(graph, nav, agent)) {
                 // The tablet shell (sidebar beside the stack) or, on a phone, just the stack.
                 TabletShell(graph, nav, signedIn = signedIn != null, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
                     val start: Any = when {
@@ -154,12 +162,29 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         conversationRoutes(graph, nav)
                     }
                 }
+                }
                 DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
               }
             }
             PushRegistrationEffect(graph)
         }
     } } } }
+}
+
+/**
+ * The app's links for the open account: with agent connection [agent] open,
+ * the in-app browser through it (its local host workspace; a chat narrows
+ * that to its agent's); on a Happy account, the phone's browser as before.
+ */
+@Composable
+private fun rememberLinks(graph: AppGraph, nav: NavHostController, agent: String?): LinkOpener {
+    val context = LocalContext.current
+    if (agent == null) {
+        val system = LocalUriHandler.current
+        return remember(system) { LinkOpener.legacy(context, system) }
+    }
+    val computer = computerName(graph, agent)
+    return remember(nav, agent, computer) { LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(agent, url)) } }
 }
 
 @Composable

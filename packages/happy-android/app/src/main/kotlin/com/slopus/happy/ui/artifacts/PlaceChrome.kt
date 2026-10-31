@@ -2,6 +2,7 @@ package com.slopus.happy.ui.artifacts
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,12 +31,15 @@ object PlaceTags {
     const val BAR = "place.bar"
     const val LOADER = "place.loader"
     const val MESSAGE = "place.message"
+    const val SUBTITLE = "place.subtitle"
 }
 
 /**
  * The bar of an agent's place (artifacts, an artifact, a Surface, a page):
- * back, the title on one line, and [actions]; glass over the page's own
- * surface ([GlassBarScreen]), as home's bar is, the content held below it.
+ * back (or, [closes], a close: the in-app browser, whose system back walks
+ * its history first), the title on one line with [subtitle] under it, and
+ * [actions]; glass over the page's own surface ([GlassBarScreen]), as
+ * home's bar is, the content held below it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +48,8 @@ internal fun PlaceScaffold(
     onBack: () -> Unit,
     tag: String,
     actions: @Composable RowScope.() -> Unit = {},
+    subtitle: String? = null,
+    closes: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colors = HappyTheme.colors
@@ -56,10 +62,25 @@ internal fun PlaceScaffold(
                 container = colors.surface,
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
-                        Icon(MaterialSymbols.ArrowBack, stringResource(R.string.conversation_back))
+                        if (closes) Icon(MaterialSymbols.Close, stringResource(R.string.browser_close))
+                        else Icon(MaterialSymbols.ArrowBack, stringResource(R.string.conversation_back))
                     }
                 },
-                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = {
+                    Column {
+                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (subtitle != null) {
+                            Text(
+                                subtitle,
+                                style = happyTextStyle(fontSize = 12, lineHeight = 16),
+                                color = colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag(PlaceTags.SUBTITLE),
+                            )
+                        }
+                    }
+                },
                 actions = actions,
             )
         },

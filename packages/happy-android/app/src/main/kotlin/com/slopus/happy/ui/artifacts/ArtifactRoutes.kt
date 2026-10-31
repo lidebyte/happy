@@ -162,8 +162,11 @@ private fun BrowserEntry(graph: AppGraph, nav: NavHostController, route: Browser
     val computer = computerName(graph, route.connectionId)
     val host = remember(route.url) { runCatching { java.net.URI(route.url).host }.getOrNull().orEmpty() }
     var title by remember { mutableStateOf(host) }
+    var url by remember { mutableStateOf(route.url) }
     BrowserScreen(
         title = title,
+        url = url,
+        onUrl = { url = it },
         computer = computer,
         prepare = {
             val client = session?.client ?: throw IllegalStateException("no connection")

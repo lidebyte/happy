@@ -43,6 +43,11 @@ import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.artifacts.openArtifact
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.slopus.happy.ui.artifacts.BrowserRoute
+import com.slopus.happy.ui.artifacts.computerName
+import com.slopus.happy.ui.browser.LinkOpener
+import com.slopus.happy.ui.browser.ProvideLinks
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -211,36 +216,44 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val syncing by session.isSyncing.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     DisposableEffect(conversation) { onDispose { conversation.setVisible(false) } }
-    ConversationScreen(
-        state = state,
-        connection = linkStatusText(status, syncing),
-        bubbleColor = settings.userMessageBubbleColor,
-        actions = remember(conversation, nav) {
-            ConversationScreenActions(
-                onBack = { nav.popBackStack() },
-                onCompose = { nav.composeConversation(route.connectionId) },
-                onDetails = { nav.navigate(ConversationDetailsRoute(route.connectionId, conversation.agentId)) },
-                onDraftChange = conversation::setDraft,
-                onSend = { words, files -> conversation.send(words, files) },
-                onModeChange = conversation::setMode,
-                onStop = conversation::stop,
-                onRetrySend = conversation::retrySend,
-                onDiscardSend = conversation::discardSend,
-                onRetryFailure = conversation::retryFailure,
-                onAnswer = conversation::answer,
-                onLoadOlder = { retry -> conversation.loadOlder(retry) },
-                onOpenArtifact = { row -> nav.openArtifact(route.connectionId, row.ref) },
-                onRetryLoad = conversation::retryLoad,
-                loadMedia = conversation::media,
-                onVisible = conversation::setVisible,
-                // The values typed into a secret go in this one request to the computer and nowhere else.
-                secrets = SecretRequestActions(
-                    secrets = { ConversationApi(session.conversationRequest()).secrets() },
-                    create = { id, description, values -> ConversationApi(session.conversationRequest()).createSecret(id, description, values) },
-                ),
-            )
-        },
-    )
+    // A link in this chat browses through this chat's agent's workspace (iOS's openBrowser(session:agentID:)).
+    val context = LocalContext.current
+    val computer = computerName(graph, route.connectionId)
+    val links = remember(nav, computer, conversation.agentId) {
+        LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
+    }
+    ProvideLinks(links) {
+        ConversationScreen(
+            state = state,
+            connection = linkStatusText(status, syncing),
+            bubbleColor = settings.userMessageBubbleColor,
+            actions = remember(conversation, nav) {
+                ConversationScreenActions(
+                    onBack = { nav.popBackStack() },
+                    onCompose = { nav.composeConversation(route.connectionId) },
+                    onDetails = { nav.navigate(ConversationDetailsRoute(route.connectionId, conversation.agentId)) },
+                    onDraftChange = conversation::setDraft,
+                    onSend = { words, files -> conversation.send(words, files) },
+                    onModeChange = conversation::setMode,
+                    onStop = conversation::stop,
+                    onRetrySend = conversation::retrySend,
+                    onDiscardSend = conversation::discardSend,
+                    onRetryFailure = conversation::retryFailure,
+                    onAnswer = conversation::answer,
+                    onLoadOlder = { retry -> conversation.loadOlder(retry) },
+                    onOpenArtifact = { row -> nav.openArtifact(route.connectionId, row.ref) },
+                    onRetryLoad = conversation::retryLoad,
+                    loadMedia = conversation::media,
+                    onVisible = conversation::setVisible,
+                    // The values typed into a secret go in this one request to the computer and nowhere else.
+                    secrets = SecretRequestActions(
+                        secrets = { ConversationApi(session.conversationRequest()).secrets() },
+                        create = { id, description, values -> ConversationApi(session.conversationRequest()).createSecret(id, description, values) },
+                    ),
+                )
+            },
+        )
+    }
     state.alert?.let { message ->
         val title = stringResource(R.string.common_error)
         val ok = stringResource(R.string.common_ok)

@@ -51,6 +51,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.ProfileStore
+import androidx.webkit.WebViewCompat
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
@@ -101,6 +103,40 @@ class BrowserPage(val url: String, val scope: BrowserProxy.Scope, val artifactId
             val authority = BrowserPolicy.Authority.of(url) ?: error("synthetic origin")
             return BrowserPage(url, scopeFor(authority), id)
         }
+    }
+}
+
+/**
+ * A WebView profile per browser page (androidx.webkit `MULTI_PROFILE`): its
+ * own cookies, storage, cache and network context, so its proxy credential
+ * is its page's alone, as iOS gives each page a nonpersistent data store.
+ * Deleted with the page's WebView; one that couldn't be (still in use, the
+ * process killed) goes at the next [assign]. Without profiles, pages share
+ * the default profile and the proxy's shared credential. Main thread only.
+ */
+internal object WebViewProfiles {
+    private const val PREFIX = "browser-"
+    private var swept = false
+
+    val supported: Boolean get() = runCatching { WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) }.getOrDefault(false)
+
+    /** Puts [view], new and untouched, in a profile of its own. */
+    fun assign(view: WebView) {
+        val store = ProfileStore.getInstance()
+        if (!swept) {
+            swept = true
+            store.allProfileNames.filter { it.startsWith(PREFIX) }.forEach { name -> runCatching { store.deleteProfile(name) } }
+        }
+        val name = PREFIX + UUID.randomUUID().toString().replace("-", "")
+        store.getOrCreateProfile(name)
+        WebViewCompat.setProfile(view, name)
+    }
+
+    /** [view]'s own profile, if it has one. */
+    fun of(view: WebView): String? = if (!supported) null else runCatching { WebViewCompat.getProfile(view).name }.getOrNull()?.takeIf { it.startsWith(PREFIX) }
+
+    fun delete(name: String) {
+        if (!runCatching { ProfileStore.getInstance().deleteProfile(name) }.getOrDefault(false)) swept = false
     }
 }
 
@@ -164,6 +200,8 @@ fun BrowserView(
     onTitle: (String) -> Unit = {},
     /** A link the page opens to another origin, from an artifact's page; iOS pushes a browser of its own. */
     onOpenElsewhere: (String) -> Unit = {},
+    /** The page's address, each time it changes. */
+    onUrl: (String) -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val context = LocalContext.current
@@ -178,8 +216,10 @@ fun BrowserView(
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     var web by remember { mutableStateOf<WebView?>(null) }
+    var pageSession by remember { mutableStateOf<BrowserProxy.Page?>(null) }
     val title by rememberUpdatedState(onTitle)
     val elsewhere by rememberUpdatedState(onOpenElsewhere)
+    val urlChanged by rememberUpdatedState(onUrl)
 
     LaunchedEffect(attempt) {
         if (page != null) return@LaunchedEffect
@@ -196,15 +236,22 @@ fun BrowserView(
     val shown = page
     LaunchedEffect(shown) {
         shown ?: return@LaunchedEffect
-        val opened = Browser.proxy.open(shown.scope)
+        // A profile of its own where WebView has them: its own cookies, storage and proxy credential.
+        val opened = Browser.proxy.open(shown.scope, isolated = WebViewProfiles.supported)
         var acquired = false
         try {
             // Applied before the page loads: nothing may go direct, even once.
             acquired = WebViewProxyOverride.acquire(Browser.proxy.port)
-            if (acquired) ready = true else failure = unsupported
+            if (acquired) {
+                pageSession = opened
+                ready = true
+            } else {
+                failure = unsupported
+            }
             awaitCancellation()
         } finally {
             ready = false
+            pageSession = null
             opened.close()
             if (acquired) WebViewProxyOverride.release()
             if (shown.synthetic) {
@@ -228,10 +275,13 @@ fun BrowserView(
             modifier = Modifier.fillMaxWidth().height(24.dp).padding(top = 4.dp).testTag(BrowserTags.ROUTE),
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (ready && shown != null) {
+            val session = pageSession
+            if (ready && shown != null && session != null) {
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
+                            // Before anything else touches it: the profile is fixed at first use.
+                            if (session.isolated) WebViewProfiles.assign(this)
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.allowFileAccess = false
@@ -248,7 +298,9 @@ fun BrowserView(
                             }
                             webViewClient = BrowserClient(
                                 page = shown,
+                                credentials = if (session.isolated) session.username to session.password else Browser.proxy.webUsername to Browser.proxy.webPassword,
                                 onState = { view ->
+                                    view.url?.let(urlChanged)
                                     canGoBack = view.canGoBack()
                                     canGoForward = view.canGoForward()
                                 },
@@ -262,7 +314,9 @@ fun BrowserView(
                     },
                     onRelease = { view ->
                         view.stopLoading()
+                        val profile = WebViewProfiles.of(view)
                         view.destroy()
+                        profile?.let(WebViewProfiles::delete)
                         if (web === view) web = null
                     },
                     modifier = Modifier.fillMaxSize().testTag(BrowserTags.WEB),
@@ -337,6 +391,9 @@ private fun ShareButton(page: BrowserPage?, web: WebView?, context: Context) {
     }
 }
 
+/** [url] as the bar shows it: `https://` and a lone trailing slash dropped; plain `http://` kept, so it shows. */
+fun displayUrl(url: String): String = url.removePrefix("https://").let { if (it.count { c -> c == '/' } == 1 && it.endsWith("/")) it.dropLast(1) else it }
+
 /** Hands [url] to whatever on the phone opens it (a `mailto:`, `tel:`, or the outside browser on request). */
 internal fun openOutside(context: Context, url: String) {
     try {
@@ -348,13 +405,15 @@ internal fun openOutside(context: Context, url: String) {
 }
 
 /**
- * The page's client: the proxy's challenge answered with the app's own
- * credential and nothing else's; a scheme that isn't web handed to the
+ * The page's client: the proxy's challenge answered with the page's
+ * [credentials] (its own in a profile of its own, else the WebViews' shared
+ * one) and nothing else's; a scheme that isn't web handed to the
  * system on a tap; and, on an artifact's page, a tapped link to another
  * origin opened in a browser of its own, as iOS does.
  */
 private class BrowserClient(
     private val page: BrowserPage,
+    private val credentials: Pair<String, String>,
     private val onState: (WebView) -> Unit,
     private val onFailure: () -> Unit,
     private val onLoaded: () -> Unit,
@@ -363,11 +422,10 @@ private class BrowserClient(
     private var answered = 0
 
     override fun onReceivedHttpAuthRequest(view: WebView, handler: HttpAuthHandler, host: String?, realm: String?) {
-        val proxy = Browser.proxy
         val loopback = host == "127.0.0.1" || host == "localhost" || host?.startsWith("127.0.0.1:") == true
         if (loopback && realm == "Happy" && answered < 8) {
             answered++
-            handler.proceed(proxy.webUsername, proxy.webPassword)
+            handler.proceed(credentials.first, credentials.second)
         } else {
             handler.cancel()
         }

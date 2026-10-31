@@ -127,13 +127,14 @@ class BrowserProxyTest {
     private lateinit var proxy: BrowserProxy
     private lateinit var page: BrowserProxy.Page
     private lateinit var http: OkHttpClient
+    private lateinit var client: AgentClient
     private val origin = "http://aeachtest.happy-artifact.invalid"
 
     @Before fun setUp() {
         daemon = Daemon()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         proxy = BrowserProxy(scope)
-        val client = AgentClient(Sockets(daemon.server.localPort), "device-token")
+        client = AgentClient(Sockets(daemon.server.localPort), "device-token")
         val authority = BrowserPolicy.Authority.of(origin)!!
         page = proxy.open(BrowserProxy.Scope.Artifact(client, "a1", 3, authority, workspace = null), webView = false)
         http = OkHttpClient.Builder()
@@ -148,6 +149,27 @@ class BrowserProxyTest {
         proxy.shutdown()
         scope.cancel()
         daemon.close()
+    }
+
+    private fun through(page: BrowserProxy.Page) = http.newBuilder()
+        .proxyAuthenticator { _, response -> response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(page.username, page.password)).build() }
+        .build()
+
+    @Test fun anIsolatedPageCannotReachAnotherPagesOrigin() {
+        // A WebView in a profile of its own, as with MULTI_PROFILE: its credential, its workspace.
+        val other = proxy.open(BrowserProxy.Scope.Workspace(client) { "wsother" }, webView = true, isolated = true)
+        through(other).newCall(Request.Builder().url("$origin/index.html").build()).execute().use {
+            // Sent to its own workspace as any web address, which knows no such host.
+            assertEquals("browser_proxy_upstream_refused", it.header("X-Happy-Proxy-Error"))
+        }
+        assertTrue(daemon.heads.any { it.startsWith("CONNECT /v0/workspaces/wsother/proxy ") })
+        assertFalse(daemon.heads.any { it.contains("/v0/artifacts/") })
+        // The shared WebView credential finds no shared page to borrow either.
+        OkHttpClient.Builder()
+            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(InetAddress.getLoopbackAddress(), proxy.port)))
+            .proxyAuthenticator { _, response -> if (response.request.header("Proxy-Authorization") != null) null else response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(proxy.webUsername, proxy.webPassword)).build() }
+            .build().newCall(Request.Builder().url("$origin/index.html").build()).execute().use { assertEquals(407, it.code) }
+        other.close()
     }
 
     private fun get(path: String) = http.newCall(Request.Builder().url(origin + path).build()).execute()

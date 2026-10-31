@@ -860,6 +860,55 @@ is `packages/happy-ios`. The wire keeps its own names
   new device token over a new tunnel. Remove the test device in Happy Agent
   afterwards.
 
+### In-app browser and links
+
+iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
+(policy, relay, tunnel, `BrowserProxy`, the artifact API pool) and
+`ui/browser/` holds the WebView and the link layer.
+
+- **Where links go** (`ui/browser/Links.kt`, `LinkOpener`). HappyApp
+  provides one per open account (`ProvideLinks`, which also replaces
+  `LocalUriHandler`). With an agent connection open, a tap on a web link
+  pushes `BrowserRoute`: the in-app browser through the agent, the local
+  host workspace's network; a conversation narrows that to its agent's
+  workspace. Other schemes go to the system. On a Happy (relay) account a
+  tap does exactly what it did before (the system handler). A long press
+  on a Markdown link (`webLinkGestures`) gives a haptic and a bottom sheet:
+  Open in Happy browser (through the agent; on a relay account a Custom
+  Tab on the phone's network), Open in external browser, Copy link, Share.
+  The gesture is taken in the initial pointer pass, so the link's own
+  click, a bubble's copy menu and text selection never also fire; a drag
+  past the touch slop lets go and scrolls (`LinksTest`).
+- **Remote only.** Every WebView request goes through `ProxyController`'s
+  override to the loopback `BrowserProxy`, with no bypass rules, applied
+  before the first load; a WebView without `PROXY_OVERRIDE` shows
+  "unsupported" and loads nothing. There is no direct fallback.
+- **Android limits and what we do:**
+  - The proxy override is process-wide, not per WebView as WKWebView's.
+    While a browser page is open, every WebView of the app (Mermaid's too)
+    goes through the proxy. With `MULTI_PROFILE` each page's WebView gets
+    a profile of its own (`WebViewProfiles`): its own cookies, storage and
+    network context, which answers the 407 with that page's credential
+    alone, so the proxy routes by credential and pages can't reach each
+    other's origins or workspaces. The profile is deleted with the page
+    (iOS's nonpersistent store). Without `MULTI_PROFILE`, pages share the
+    default profile and one credential, and the proxy routes by target
+    (an artifact's synthetic origin to its page, the rest through the
+    newest page's workspace).
+  - `shouldInterceptRequest` can't see POST bodies or carry WebSockets,
+    so nothing is intercepted there: the proxy speaks HTTP CONNECT and
+    absolute-form HTTP below WebView, so bodies, WebSockets, SSE, TLS,
+    cookies and redirects are the page's own, untouched.
+  - Cleartext: `network_security_config` allows http only for the
+    synthetic artifact origin and localhost; other plain-http pages are
+    refused by Android before the proxy sees them (iOS allows them in
+    web content).
+- **Pooling** (`BrowserConnectionPool`, `BrowserResponseBody`): artifact
+  `/api/*` requests lease keep-alive connections per page (6 idle, 5 s),
+  returned only after an exact, self-delimited answer; everything else
+  closes after one answer. `BrowserProxyTest` runs OkHttp through the
+  proxy against a byte-level fake daemon.
+
 ## Autocomplete
 
 `@` file mentions and `/` commands in the chat composer. Logic is in
