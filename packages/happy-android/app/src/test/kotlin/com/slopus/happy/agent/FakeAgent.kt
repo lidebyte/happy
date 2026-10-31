@@ -69,13 +69,22 @@ object Wire {
     fun bootstrap(
         projects: List<JsonObject> = emptyList(), workspaces: List<JsonObject> = emptyList(), bots: List<JsonObject> = emptyList(),
         tasks: List<JsonObject> = emptyList(), memberships: List<JsonObject> = emptyList(), cursor: String = "c0",
-        surfaces: List<JsonObject>? = null,
+        surfaces: List<JsonObject>? = null, userSettings: List<JsonObject>? = null,
     ) = buildJsonObject {
         put("projects", JsonArray(projects)); put("workspaces", JsonArray(workspaces)); put("bots", JsonArray(bots))
         put("tasks", JsonArray(tasks)); put("taskMemberships", JsonArray(memberships)); put("cursor", cursor)
         if (surfaces != null) put("surfaces", JsonArray(surfaces))
+        if (userSettings != null) put("userSettings", JsonArray(userSettings))
         put("profile", buildJsonObject { put("userId", USER) })
     }
+
+    /** A user setting object (API.md, "The setting object"). */
+    fun setting(key: String, value: kotlinx.serialization.json.JsonElement, version: String, updatedAt: Long = 1L) = buildJsonObject {
+        put("key", key); put("value", value); put("updatedAt", updatedAt); put("version", version)
+    }
+
+    /** Desktop's Hide projects as the agent stores it. */
+    fun projectsHidden(hidden: Boolean, version: String) = setting(DesktopSettings.PROJECTS_VISIBILITY, DesktopSettings.projectsVisibility(hidden), version)
 
     fun event(cursor: String, type: String, payload: JsonObject) = AgentEvent(cursor, type, payload)
 

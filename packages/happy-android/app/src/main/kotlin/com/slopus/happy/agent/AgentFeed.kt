@@ -85,7 +85,9 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
          * own. Under each conversation, its active subtasks, at most two
          * levels (API.md, "Agents"); a worktree a bot's or task's subtask
          * works in is listed under that subtask only. Archived ones, hidden
-         * subagents and Stem Cells' Surfaces are left out.
+         * subagents and Stem Cells' Surfaces are left out, and the projects
+         * altogether while the person hides them on the desktop
+         * ([AgentCatalog.projectsHidden]).
          */
         fun derive(catalog: AgentCatalog): AgentFeed {
             if (!catalog.loaded) return Empty
@@ -173,7 +175,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     agentRows(agentId, task.string("name"), ConversationKind.Task, 0)
                 }
             }
-            section(AgentFeedSection.Projects) {
+            if (!catalog.projectsHidden) section(AgentFeedSection.Projects) {
                 catalog.projects.values.filter(::active).sortedWith(byOrderKey).forEach { project ->
                     val id = project.string("id") ?: return@forEach
                     // Only a picture the agent serves itself: a cloned repo's.

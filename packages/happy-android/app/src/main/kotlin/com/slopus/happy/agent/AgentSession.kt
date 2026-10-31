@@ -13,6 +13,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -37,7 +39,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
@@ -68,6 +73,8 @@ class AgentSession internal constructor(
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
     private val linkLock = Mutex()
     private val snapshotQueued = AtomicBoolean(false)
+    // Asks for the settings changed here to be sent; one ask covers every change made meanwhile.
+    private val settingsQueued = Channel<Unit>(Channel.CONFLATED)
     private var link: AgentClient.Link? = null
     private val token = MutableStateFlow<String?>(null)
 
@@ -113,6 +120,34 @@ class AgentSession internal constructor(
         .flowOn(Dispatchers.Default)
         .stateIn(scope, SharingStarted.Eagerly, AgentFeed.derive(catalogState.value))
 
+    /**
+     * Desktop's Hide projects for this person, live: an edit on the desktop
+     * comes with `user_settings.updated`, one made here shows at once.
+     */
+    val projectsHidden: StateFlow<Boolean> = catalogState
+        .map { it.projectsHidden }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, catalogState.value.projectsHidden)
+
+    /** Hides or shows the projects, on home here and on the desktop. */
+    fun setProjectsHidden(hidden: Boolean) {
+        scope.launch { setSetting(DesktopSettings.PROJECTS_VISIBILITY, DesktopSettings.projectsVisibility(hidden)) }
+    }
+
+    /**
+     * Sets one of the person's user settings (API.md, `PUT /v0/user-settings/:key`):
+     * shown at once, kept on this phone first, then sent with the time the
+     * person made it, so a change made offline goes when the link is back
+     * and never overwrites a later one from another device.
+     */
+    suspend fun setSetting(key: String, value: JsonElement) {
+        catalogLock.withLock {
+            catalogState.update { it.withPendingSetting(key, value, AgentClient.newId(), System.currentTimeMillis()) }
+        }
+        withContext(Dispatchers.IO) { writeCache(catalogState.value) }
+        settingsQueued.trySend(Unit)
+    }
+
     /** Bots' pictures, as home's rows draw them. */
     val pictures = AgentPictures(connectionId) { path -> client.send("GET", path).body }
 
@@ -136,6 +171,9 @@ class AgentSession internal constructor(
     init {
         scope.launch {
             active.distinctUntilChanged().collectLatest { on -> if (on) live() }
+        }
+        scope.launch {
+            settingsQueued.receiveAsFlow().collect { deliverSettings() }
         }
         if (cacheFile != null) {
             @OptIn(FlowPreview::class)
@@ -229,6 +267,8 @@ class AgentSession internal constructor(
                         if (hello.gap) readSnapshot()
                         statusState.value = AgentLinkStatus.Connected
                         onConnected()
+                        // Every connect sends what was changed while offline.
+                        if (catalogState.value.pendingSettings.isNotEmpty()) settingsQueued.trySend(Unit)
                     } else {
                         apply(event)
                     }
@@ -292,6 +332,50 @@ class AgentSession internal constructor(
             reads.update { it - 1 }
         }
     }
+
+    /**
+     * Sends the settings changed here, one at a time, while the link is up
+     * (iOS's SyncEngine `deliver`): each with its `mutationId` and the time
+     * the person made it, the agent's answer kept. A failure keeps the
+     * change and its time for the next try; a refusal (4xx) or a revoked
+     * phone stops, the change still shown here, as API.md asks of a daemon
+     * that has no user settings.
+     */
+    private suspend fun deliverSettings() {
+        var attempt = 0
+        while (true) {
+            if (statusState.value != AgentLinkStatus.Connected) return
+            val (key, change) = catalogState.value.pendingSettings.entries.minByOrNull { it.key }?.toPair() ?: return
+            try {
+                val answer = client.decode<JsonObject>(
+                    "PUT",
+                    "/v0/user-settings/${AgentClient.escape(key)}",
+                    buildJsonObject {
+                        put("mutationId", change.mutationId)
+                        put("value", change.value)
+                        put("updatedAt", change.updatedAt)
+                    },
+                )
+                catalogLock.withLock {
+                    catalogState.update { it.settingAcknowledged(key, change.mutationId, answer["setting"] as? JsonObject) }
+                }
+                attempt = 0
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: AgentApiException) {
+                if (e.status in 400..499) return
+                delay(settingsBackoff(attempt++))
+            } catch (e: AgentConnectionException) {
+                if (e.reason == AgentConnectionException.Reason.Revoked) return
+                delay(settingsBackoff(attempt++))
+            } catch (_: Exception) {
+                delay(settingsBackoff(attempt++))
+            }
+        }
+    }
+
+    /** 1, 2, 4 … 30 seconds, as iOS retries a setting. */
+    private fun settingsBackoff(attempt: Int): Long = (INITIAL_BACKOFF shl attempt.coerceAtMost(5)).coerceAtMost(30_000L)
 
     private fun readCache(): AgentCatalog? = try {
         cacheFile?.takeIf { it.exists() }?.readText()?.let { AgentClient.json.decodeFromString(AgentCatalog.serializer(), it) }
