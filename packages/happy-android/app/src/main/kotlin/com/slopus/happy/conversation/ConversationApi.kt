@@ -160,31 +160,6 @@ open class ConversationApi(private val request: AgentRequest) {
         return call("POST", "/v0/secrets", body)["secret"].obj?.get("id").str ?: throw invalid()
     }
 
-    /** One artifact as the catalog has it (API.md "Artifacts"). */
-    open suspend fun artifact(artifactId: String): JsonObject =
-        call("GET", "/v0/artifacts/${escape(artifactId)}")["artifact"].obj ?: throw invalid()
-
-    /** A version's manifest: its title, its entry's path and every file it holds. [number] or `latest`. */
-    open suspend fun artifactVersion(artifactId: String, number: String = "latest"): JsonObject =
-        call("GET", "/v0/artifacts/${escape(artifactId)}/versions/${escape(number)}")["version"].obj ?: throw invalid()
-
-    /** Tombstones stay readable, but their versions and files no longer do (API.md). */
-    open suspend fun readArtifact(artifactId: String): Artifact? {
-        val metadata = artifact(artifactId)
-        val version = if (Artifact.isDeleted(metadata)) JsonObject(emptyMap()) else artifactVersion(artifactId)
-        return Artifact.parse(metadata, version)
-    }
-
-    /** One page of the agent's artifacts, newest first, and the cursor of the next; null at the end. */
-    open suspend fun artifacts(pageCursor: String? = null): Pair<List<ArtifactSummary>, String?> {
-        val answer = call("GET", "/v0/artifacts" + (pageCursor?.let { "?pageCursor=${escape(it)}" } ?: ""))
-        val items = answer["artifacts"].arr.orEmpty().mapNotNull { item ->
-            val o = item.obj ?: return@mapNotNull null
-            ArtifactSummary(o["id"].str ?: return@mapNotNull null, o["title"].str?.takeIf { it.isNotBlank() })
-        }
-        return items to answer["nextPageCursor"].str
-    }
-
     /** A todo list's active todos, then its completed ones (API.md "Surfaces"). */
     open suspend fun todos(surfaceId: String): List<Todo> {
         val path = "/v0/surfaces/todo/${escape(surfaceId)}"
@@ -207,14 +182,6 @@ open class ConversationApi(private val request: AgentRequest) {
     /** A document as Markdown, its read-only projection. */
     open suspend fun document(surfaceId: String): String =
         call("GET", "/v0/surfaces/document/${escape(surfaceId)}")["document"].obj?.get("text").str.orEmpty()
-
-    /** The bytes of one file of one version, asked for by its exact manifest path. */
-    open suspend fun artifactFile(artifactId: String, number: String, path: String): ByteArray {
-        val route = path.split('/').joinToString("/") { escape(it) }
-        val response = request("GET", "/v0/artifacts/${escape(artifactId)}/versions/${escape(number)}/files/$route", null)
-        if (response.status !in 200..299) decode(response)
-        return response.body
-    }
 
     companion object {
         private val json = Json { ignoreUnknownKeys = true }

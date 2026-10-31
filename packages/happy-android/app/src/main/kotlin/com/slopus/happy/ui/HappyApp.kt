@@ -22,6 +22,7 @@ import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.push.PushRegistrationEffect
 import com.slopus.happy.payments.PaywallHost
+import com.slopus.happy.ui.artifacts.AgentArtifactsRoute
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
@@ -29,7 +30,6 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.ui.connect.DeepLinkEffect
-import com.slopus.happy.ui.connection.AgentArtifactsRoute
 import com.slopus.happy.ui.connection.AgentHome
 import com.slopus.happy.ui.connection.AgentSurfaceRoute
 import com.slopus.happy.ui.connect.LocalAddFlow

@@ -21,7 +21,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import com.slopus.happy.ui.conversation.ArtifactTags
+import com.slopus.happy.ui.artifacts.ArtifactTags
+import com.slopus.happy.ui.artifacts.PlaceTags
 import com.slopus.happy.ui.conversation.ConversationRowTags
 import com.slopus.happy.ui.conversation.ConversationScreenTags
 import com.slopus.happy.ui.conversation.PictureViewerTags
@@ -240,11 +241,12 @@ class ConversationDeviceTest {
             val slug = title.substringAfter(' ')
             rule.onNodeWithText(title, useUnmergedTree = true).performScrollTo().performClick()
             rule.waitUntil(10_000) {
-                rule.onAllNodesWithTag(ArtifactTags.LOADING, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() &&
+                rule.onAllNodesWithTag(PlaceTags.LOADER, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() &&
                     rule.onAllNodesWithTag(ArtifactTags.SCREEN, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
             }
             capture("11-artifact-$slug")
-            if (slug == "video" || slug == "document") {
+            // A PDF is the one kind the WebView can't draw; it goes to an app that reads it.
+            if (slug == "document") {
                 rule.onNodeWithTag(ArtifactTags.OPEN, useUnmergedTree = true).performClick()
                 val handler = otherAppInFront("artifact $slug open")
                 capture("12-artifact-$slug-handler")

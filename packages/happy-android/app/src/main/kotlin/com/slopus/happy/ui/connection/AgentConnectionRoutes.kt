@@ -19,6 +19,7 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.PairingState
+import com.slopus.happy.ui.artifacts.artifactRoutes
 import kotlinx.serialization.Serializable
 
 /**
@@ -31,7 +32,7 @@ import kotlinx.serialization.Serializable
 /** The Protocol V2 screens, signed in or out. HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostController) {
     composable<PairingRoute> { Pairing(graph, nav) }
-    composable<AgentArtifactsRoute> { entry -> AgentArtifacts(graph, nav, entry.toRoute()) }
+    artifactRoutes(graph, nav)
     composable<AgentSurfaceRoute> { entry -> AgentSurface(graph, nav, entry.toRoute()) }
 }
 

@@ -1,7 +1,6 @@
 package com.slopus.happy.ui.connection
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +15,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -24,11 +23,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,14 +39,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -61,47 +54,38 @@ import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
-import com.slopus.happy.conversation.ArtifactSummary
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.Todo
+import com.slopus.happy.ui.artifacts.PlaceLoader
+import com.slopus.happy.ui.artifacts.PlaceMessage
+import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
-import com.slopus.happy.ui.components.MaterialSymbols
-import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
-import com.slopus.happy.ui.conversation.ArtifactRoute
-import com.slopus.happy.ui.conversation.ConversationScreenTags
 import com.slopus.happy.ui.conversation.conversationRequest
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-
-/** The agent's artifacts, home's Artifacts row. */
-@Serializable data class AgentArtifactsRoute(val connectionId: String)
 
 /** One Surface the person joined; [name] titles the bar before anything is read. */
 @Serializable data class AgentSurfaceRoute(val connectionId: String, val surfaceId: String, val type: String, val name: String)
 
 object AgentPlacesTags {
-    const val ARTIFACTS = "agentPlaces.artifacts"
-    const val ARTIFACT = "agentPlaces.artifact"
     const val SURFACE = "agentPlaces.surface"
     const val TODO = "agentPlaces.todo"
     const val TODO_FIELD = "agentPlaces.todoField"
     const val DOCUMENT = "agentPlaces.document"
-    const val NOTE = "agentPlaces.note"
 }
 
 /** What a place screen has read: nothing yet, its content, or why it couldn't, while it has nothing to show. */
@@ -109,46 +93,6 @@ sealed interface PlaceRead<out T> {
     data object Reading : PlaceRead<Nothing>
     data class Ready<T>(val value: T) : PlaceRead<T>
     data class Failed(val reason: String) : PlaceRead<Nothing>
-}
-
-/** The artifacts read so far and the cursor of the next page; null once there is no more. */
-data class ArtifactPages(val items: List<ArtifactSummary>, val next: String?)
-
-/**
- * The artifact catalog, as iOS's `ArtifactsViewController` reads it: the
- * first page, again on every `artifact.*` event; further pages appended as
- * the list nears its end. One read at a time; a read that fails once
- * something is shown keeps what is shown.
- */
-internal class ArtifactCatalogReader(private val api: ConversationApi, private val scope: CoroutineScope) {
-    private val stateFlow = MutableStateFlow<PlaceRead<ArtifactPages>>(PlaceRead.Reading)
-    val state: StateFlow<PlaceRead<ArtifactPages>> = stateFlow.asStateFlow()
-    private var reading: Job? = null
-
-    fun read(append: Boolean = false) {
-        if (reading?.isActive == true) return
-        val shown = (stateFlow.value as? PlaceRead.Ready)?.value
-        val cursor = if (append) shown?.next ?: return else null
-        reading = scope.launch {
-            try {
-                val (page, next) = api.artifacts(cursor)
-                stateFlow.update { current ->
-                    val before = (current as? PlaceRead.Ready)?.value?.items.orEmpty()
-                    val known = before.mapTo(HashSet()) { it.id }
-                    PlaceRead.Ready(ArtifactPages(if (append) before + page.filter { it.id !in known } else page, next))
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (stateFlow.value !is PlaceRead.Ready) stateFlow.value = PlaceRead.Failed(Conversation.describe(e))
-            }
-        }
-    }
-
-    fun retry() {
-        stateFlow.value = PlaceRead.Reading
-        read()
-    }
 }
 
 /** What one Surface shows on the phone: a todo list, a document's Markdown, or a note to open it on the computer. */
@@ -161,7 +105,7 @@ sealed interface SurfaceBody {
 /**
  * One Surface, as iOS's `SurfaceViewController` reads it: a todo list read
  * again on each event about it and after each todo added; a document read
- * once; any other kind isn't read at all.
+ * once and on each pull; any other kind isn't read at all.
  */
 internal class SurfaceReader(
     private val api: ConversationApi,
@@ -179,19 +123,22 @@ internal class SurfaceReader(
         (type == TODO && (event.data["surfaceId"].str ?: event.data["todo"].obj?.get("surfaceId").str) == surfaceId)
 
     fun read() {
+        scope.launch { refresh() }
+    }
+
+    /** One read, returning once it has landed or failed; what a pull waits on. */
+    suspend fun refresh() {
         if (!readable) return
-        scope.launch {
-            try {
-                val body = when (type) {
-                    TODO -> SurfaceBody.Todos(api.todos(surfaceId))
-                    else -> SurfaceBody.Document(api.document(surfaceId))
-                }
-                stateFlow.value = PlaceRead.Ready(body)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (stateFlow.value !is PlaceRead.Ready) stateFlow.value = PlaceRead.Failed(Conversation.describe(e))
+        try {
+            val body = when (type) {
+                TODO -> SurfaceBody.Todos(api.todos(surfaceId))
+                else -> SurfaceBody.Document(api.document(surfaceId))
             }
+            stateFlow.value = PlaceRead.Ready(body)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (stateFlow.value !is PlaceRead.Ready) stateFlow.value = PlaceRead.Failed(Conversation.describe(e))
         }
     }
 
@@ -211,7 +158,7 @@ internal class SurfaceReader(
                 throw e
             } catch (_: Exception) {
             }
-            read()
+            refresh()
         }
     }
 
@@ -219,26 +166,6 @@ internal class SurfaceReader(
         const val TODO = "todo"
         const val DOCUMENT = "document"
     }
-}
-
-@Composable
-internal fun AgentArtifacts(graph: AppGraph, nav: NavHostController, route: AgentArtifactsRoute) {
-    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
-    val scope = rememberCoroutineScope()
-    val reader = remember(session) { session?.let { ArtifactCatalogReader(ConversationApi(it.conversationRequest()), scope) } }
-    LaunchedEffect(reader) {
-        if (session == null || reader == null) return@LaunchedEffect
-        reader.read()
-        session.events.filter { it.type.startsWith("artifact.") || it.type == AgentEvent.HELLO }.collect { reader.read() }
-    }
-    val read = reader?.state?.collectAsStateWithLifecycle()?.value ?: PlaceRead.Failed(stringResource(R.string.conversation_unavailable))
-    ArtifactsScreen(
-        read = read,
-        onBack = { nav.popBackStack() },
-        onOpen = { nav.navigate(ArtifactRoute(route.connectionId, it)) },
-        onMore = { reader?.read(append = true) },
-        onRetry = { reader?.retry() },
-    )
 }
 
 @Composable
@@ -261,97 +188,14 @@ internal fun AgentSurface(graph: AppGraph, nav: NavHostController, route: AgentS
         onBack = { nav.popBackStack() },
         onAdd = { reader?.add(it) },
         onRetry = { reader?.retry() },
+        onRefresh = { reader?.refresh() },
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PlacePage(title: String, onBack: () -> Unit, tag: String, content: @Composable () -> Unit) {
-    val colors = HappyTheme.colors
-    Column(Modifier.fillMaxSize().background(colors.surface).testTag(tag)) {
-        TopAppBar(
-            title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            navigationIcon = {
-                IconButton(onClick = onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
-                    androidx.compose.material3.Icon(MaterialSymbols.ArrowBack, stringResource(R.string.conversation_back))
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = colors.surface,
-                scrolledContainerColor = colors.surface,
-                titleContentColor = colors.text,
-                navigationIconContentColor = colors.text,
-            ),
-        )
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) { content() }
-    }
-}
-
-@Composable
-private fun <T> PlaceState(read: PlaceRead<T>, failed: String, onRetry: () -> Unit, ready: @Composable (T) -> Unit) {
-    when (read) {
-        PlaceRead.Reading -> StatePage(title = null, body = null, art = StateArt.Waiting)
-        is PlaceRead.Failed -> StatePage(
-            title = failed,
-            body = read.reason,
-            icon = Ionicon.CloudOfflineOutline,
-            action = stringResource(R.string.common_retry) to onRetry,
-        )
-        is PlaceRead.Ready -> ready(read.value)
-    }
-}
-
-/** The artifact catalog, one titled row each, newest first; a tap opens the artifact. */
-@Composable
-fun ArtifactsScreen(
-    read: PlaceRead<ArtifactPages>,
-    onBack: () -> Unit,
-    onOpen: (artifactId: String) -> Unit,
-    onMore: () -> Unit,
-    onRetry: () -> Unit,
-) {
-    val colors = HappyTheme.colors
-    PlacePage(stringResource(R.string.agent_home_artifacts), onBack, AgentPlacesTags.ARTIFACTS) {
-        PlaceState(read, stringResource(R.string.agent_artifacts_failed), onRetry) { pages ->
-            if (pages.items.isEmpty()) {
-                StatePage(title = null, body = stringResource(R.string.agent_artifacts_empty), icon = Ionicon.LayersOutline)
-                return@PlaceState
-            }
-            val untitled = stringResource(R.string.agent_artifacts_untitled)
-            LazyColumn(Modifier.fillMaxSize().contentMaxWidth(LocalWindowLayout.current)) {
-                itemsIndexed(pages.items, key = { _, it -> it.id }) { index, artifact ->
-                    if (index == pages.items.lastIndex && pages.next != null) LaunchedEffect(pages.next) { onMore() }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .clickable(role = Role.Button) { onOpen(artifact.id) }
-                            .padding(horizontal = 16.dp)
-                            .testTag(AgentPlacesTags.ARTIFACT),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            artifact.title ?: untitled,
-                            style = AgentHomeSpec.title,
-                            color = colors.text,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Icon(Ionicon.ChevronForward, 16.dp, colors.grouped.chevron)
-                    }
-                    if (index < pages.items.lastIndex) HorizontalDivider(Modifier.padding(start = 16.dp), thickness = 0.5.dp, color = colors.divider)
-                }
-                item { Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars)) }
-            }
-        }
-    }
-}
-
 /**
- * One Surface, kept minimal as on iOS: a todo list shows its todos and
- * takes a new one; a document shows its Markdown, read-only; any other
- * kind says to open it on the computer.
+ * One Surface, kept minimal as on iOS: a todo list shows its todos live and
+ * takes a new one; a document shows its Markdown, read-only, read again on
+ * a pull; any other kind says to open it on the computer.
  */
 @Composable
 fun SurfaceScreen(
@@ -360,52 +204,73 @@ fun SurfaceScreen(
     onBack: () -> Unit,
     onAdd: (String) -> Unit,
     onRetry: () -> Unit,
+    onRefresh: suspend () -> Unit = {},
 ) {
-    PlacePage(name, onBack, AgentPlacesTags.SURFACE) {
-        PlaceState(read, stringResource(R.string.agent_surface_failed), onRetry) { body ->
-            when (body) {
+    PlaceScaffold(name, onBack, AgentPlacesTags.SURFACE) {
+        when (read) {
+            PlaceRead.Reading -> PlaceLoader()
+            is PlaceRead.Failed -> StatePage(
+                title = stringResource(R.string.agent_surface_failed),
+                body = read.reason,
+                icon = Ionicon.CloudOfflineOutline,
+                action = stringResource(R.string.common_retry) to onRetry,
+            )
+            is PlaceRead.Ready -> when (val body = read.value) {
                 is SurfaceBody.Todos -> TodoList(body.todos, onAdd)
-                is SurfaceBody.Document -> if (body.markdown.isBlank()) {
-                    PlaceNote(stringResource(R.string.agent_surface_empty_document))
-                } else {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .contentMaxWidth(LocalWindowLayout.current)
-                            .padding(16.dp)
-                            .testTag(AgentPlacesTags.DOCUMENT),
-                    ) {
-                        MarkdownView(parseMarkdown(body.markdown))
-                        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-                    }
-                }
-                SurfaceBody.Elsewhere -> PlaceNote(stringResource(R.string.agent_surface_open_on_computer))
+                is SurfaceBody.Document -> SurfaceDocument(body.markdown, onRefresh)
+                SurfaceBody.Elsewhere -> PlaceMessage(stringResource(R.string.agent_surface_open_on_computer))
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlaceNote(text: String) {
-    Text(
-        text,
-        style = AgentHomeSpec.timestamp.copy(fontSize = AgentHomeSpec.title.fontSize),
-        color = HappyTheme.colors.textSecondary,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp).testTag(AgentPlacesTags.NOTE),
-    )
+private fun SurfaceDocument(markdown: String, onRefresh: suspend () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            refreshing = true
+            scope.launch {
+                try {
+                    onRefresh()
+                } finally {
+                    refreshing = false
+                }
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .contentMaxWidth(LocalWindowLayout.current)
+                .testTag(AgentPlacesTags.DOCUMENT),
+        ) {
+            if (markdown.isBlank()) {
+                PlaceMessage(stringResource(R.string.agent_surface_empty_document))
+            } else {
+                Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)) { MarkdownView(parseMarkdown(markdown)) }
+            }
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        }
+    }
 }
 
+/** iOS's `TodoLayout`: the field 12 under the bar, then the rows 8 under it; with none, a note 24 under. */
 @Composable
 private fun TodoList(todos: List<Todo>, onAdd: (String) -> Unit) {
     val colors = HappyTheme.colors
     val done = stringResource(R.string.agent_surface_todo_done)
     val nothing = stringResource(R.string.agent_surface_no_todos)
+    val style = happyTextStyle(fontSize = 16, lineHeight = 21)
     LazyColumn(Modifier.fillMaxSize().imePadding().contentMaxWidth(LocalWindowLayout.current)) {
         item(key = "field") { TodoField(onAdd) }
-        if (todos.isEmpty()) item(key = "empty") { PlaceNote(nothing) }
-        itemsIndexed(todos, key = { _, it -> it.id }) { _, todo ->
+        if (todos.isEmpty()) item(key = "empty") { PlaceMessage(nothing, Modifier.padding(top = 16.dp)) }
+        items(todos, key = { it.id }) { todo ->
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -413,23 +278,19 @@ private fun TodoList(todos: List<Todo>, onAdd: (String) -> Unit) {
                     .padding(horizontal = 16.dp, vertical = 10.dp)
                     .semantics(mergeDescendants = true) { if (todo.done) stateDescription = done }
                     .testTag(AgentPlacesTags.TODO),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    if (todo.done) Ionicon.CheckmarkCircle else Ionicon.EllipseOutline,
-                    20.dp,
-                    colors.textSecondary,
-                    Modifier.padding(top = 1.dp),
-                )
+                Icon(if (todo.done) Ionicon.CheckmarkCircle else Ionicon.EllipseOutline, 22.dp, colors.textSecondary)
                 Text(
                     todo.text,
-                    style = AgentHomeSpec.title.copy(fontWeight = null, textDecoration = if (todo.done) TextDecoration.LineThrough else null),
+                    style = style.copy(textDecoration = if (todo.done) TextDecoration.LineThrough else null),
                     color = if (todo.done) colors.textSecondary else colors.text,
                     modifier = Modifier.weight(1f),
                 )
             }
         }
-        item { Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars)) }
+        item { Spacer(Modifier.padding(bottom = 16.dp).windowInsetsBottomHeight(WindowInsets.navigationBars)) }
     }
 }
 
@@ -438,7 +299,7 @@ private fun TodoList(todos: List<Todo>, onAdd: (String) -> Unit) {
 private fun TodoField(onAdd: (String) -> Unit) {
     val colors = HappyTheme.colors
     var text by rememberSaveable { mutableStateOf("") }
-    val style = AgentHomeSpec.title.copy(fontWeight = null, color = colors.input.text)
+    val style = happyTextStyle(fontSize = 16, lineHeight = 21).copy(color = colors.input.text)
     val placeholder = stringResource(R.string.agent_surface_add_todo)
     BasicTextField(
         value = text,
@@ -453,7 +314,7 @@ private fun TodoField(onAdd: (String) -> Unit) {
         }),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)
             .semantics { contentDescription = placeholder }
             .testTag(AgentPlacesTags.TODO_FIELD),
         decorationBox = { inner ->

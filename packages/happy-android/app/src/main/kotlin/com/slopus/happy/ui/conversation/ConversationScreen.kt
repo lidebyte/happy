@@ -124,7 +124,7 @@ class ConversationScreenActions(
     /** History could not be read: ask again. */
     val onRetryLoad: () -> Unit = {},
     val loadMedia: suspend (MediaRef) -> ByteArray = { throw IllegalStateException() },
-    val onOpenArtifact: ((String) -> Unit)? = null,
+    val onOpenArtifact: ((com.slopus.happy.conversation.ConversationRow.Artifact) -> Unit)? = null,
     /** The newest message is on screen while the app is up: unread clears. */
     val onVisible: (Boolean) -> Unit = {},
     /** How a secret request is made and answered; null where this build cannot. */

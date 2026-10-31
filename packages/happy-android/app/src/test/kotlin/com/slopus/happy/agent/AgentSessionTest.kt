@@ -3,13 +3,12 @@ package com.slopus.happy.agent
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.AgentConnectionCredentials
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
-import com.slopus.happy.conversation.ConversationApi
-import com.slopus.happy.ui.conversation.conversationRequest
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -86,10 +85,10 @@ class AgentSessionTest {
                 }
             }
         }
-        ConversationApi(sessions.session(other)!!.conversationRequest()).artifactFile("r1", "2", "images/plot #1.png")
+        ArtifactClient(sessions.session(other)!!.client).file("r1", 2, "images/plot #1.png")
         assertEquals(listOf(Triple("other-addr", "other-token", "/v0/artifacts/r1/versions/2/files/images/plot%20%231.png")), seen)
         seen.clear()
-        ConversationApi(sessions.session(id)!!.conversationRequest()).artifactFile("r1", "2", "report.md")
+        ArtifactClient(sessions.session(id)!!.client).file("r1", 2, "report.md")
         assertEquals(listOf(Triple("addr", "token", "/v0/artifacts/r1/versions/2/files/report.md")), seen)
     }
 

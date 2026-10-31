@@ -18,11 +18,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -134,7 +136,15 @@ fun MarkdownView(
     blocks: List<MarkdownBlock>,
     modifier: Modifier = Modifier,
     onOptionPress: ((String) -> Unit)? = null,
+    /** Every link, of any address, goes here instead of the system; for a document that resolves its own (an artifact's). */
+    onLink: ((String) -> Unit)? = null,
+    /** Draws a picture instead of [MarkdownImage]; for a document that reads its own (an artifact's). */
+    image: (@Composable (MarkdownBlock.Image) -> Unit)? = null,
 ) {
+    if (onLink != null) {
+        CompositionLocalProvider(LocalMarkdownLinks provides onLink) { MarkdownView(blocks, modifier, onOptionPress, null, image) }
+        return
+    }
     Column(modifier = modifier) {
         for (block in blocks) {
             when (block) {
@@ -171,7 +181,7 @@ fun MarkdownView(
                 )
                 is MarkdownBlock.Options -> OptionsBlock(block.items, onOptionPress)
                 is MarkdownBlock.Table -> TableBlock(block)
-                is MarkdownBlock.Image -> MarkdownImage(block.alt, block.url)
+                is MarkdownBlock.Image -> image?.invoke(block) ?: MarkdownImage(block.alt, block.url)
             }
         }
     }
@@ -180,13 +190,17 @@ fun MarkdownView(
 @Composable
 private fun rememberSpans(spans: List<MarkdownSpan>): AnnotatedString {
     val text = HappyTheme.colors.text
-    return remember(spans, text) { spansToAnnotatedString(spans) }
+    val links = LocalMarkdownLinks.current
+    return remember(spans, text, links) { spansToAnnotatedString(spans, links) }
 }
+
+/** Where MarkdownView's links go when its caller handles them; null for the system's (http(s) only). */
+private val LocalMarkdownLinks = staticCompositionLocalOf<((String) -> Unit)?> { null }
 
 private val LinkStyles = TextLinkStyles(style = ComposeSpanStyle(textDecoration = TextDecoration.Underline))
 
 /** RenderSpans: each span's styles over the block's, http(s) links tappable. */
-fun spansToAnnotatedString(spans: List<MarkdownSpan>): AnnotatedString = buildAnnotatedString {
+fun spansToAnnotatedString(spans: List<MarkdownSpan>, onLink: ((String) -> Unit)? = null): AnnotatedString = buildAnnotatedString {
     for (span in spans) {
         val style = ComposeSpanStyle(
             fontWeight = if (SpanStyle.Bold in span.styles || SpanStyle.Semibold in span.styles) FontWeight.SemiBold else null,
@@ -194,7 +208,9 @@ fun spansToAnnotatedString(spans: List<MarkdownSpan>): AnnotatedString = buildAn
             fontFamily = if (SpanStyle.Code in span.styles) AppMono else null,
         )
         val url = span.url
-        if (url != null && isHttpMarkdownLink(url)) {
+        if (url != null && onLink != null) {
+            withLink(LinkAnnotation.Clickable(url, LinkStyles) { onLink(url) }) { withStyle(style) { append(span.text) } }
+        } else if (url != null && isHttpMarkdownLink(url)) {
             withLink(LinkAnnotation.Url(url, LinkStyles)) { withStyle(style) { append(span.text) } }
         } else {
             withStyle(style) { append(span.text) }

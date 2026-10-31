@@ -86,7 +86,7 @@ sealed interface Presentation {
     data class Search(val query: String, val target: String) : Presentation
     /** [columns] is the grid the producer asked for (`layout` `{type: "columns", columns}`, 1 or 2), else 0: justified rows. */
     data class Media(val items: List<MediaItem>, val columns: Int = 0) : Presentation
-    data class Artifact(val artifactId: String, val artifactType: String?, val title: String?, val version: Int?) : Presentation
+    data class Artifact(val artifactId: String, val artifactType: String?, val title: String?, val version: Int?, val shows: String? = null) : Presentation
 
     companion object {
         fun parse(value: JsonElement?): Presentation? {
@@ -101,7 +101,7 @@ sealed interface Presentation {
                 )
                 "search" -> Search(o["query"].str ?: return null, o["target"].str ?: "web")
                 "media" -> Media(o["items"].arr.orEmpty().mapNotNull(MediaItem::parse), columns(o["layout"]))
-                "artifact" -> Artifact(o["artifactId"].str ?: return null, o["artifactType"].str, o["title"].str, o["version"].num?.toInt())
+                "artifact" -> Artifact(o["artifactId"].str ?: return null, o["artifactType"].str, o["title"].str, o["version"].num?.toInt(), o["shows"].str)
                 else -> null
             }
         }
@@ -390,9 +390,6 @@ data class SecretSummary(
         }
     }
 }
-
-/** One artifact as the catalog lists it: what a row shows; null [title] reads as untitled. */
-data class ArtifactSummary(val id: String, val title: String?)
 
 /** One todo of a todo list Surface. */
 data class Todo(val id: String, val text: String, val done: Boolean)
