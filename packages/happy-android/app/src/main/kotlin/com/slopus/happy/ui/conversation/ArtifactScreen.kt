@@ -36,7 +36,8 @@ import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.RemoteImage
-import com.slopus.happy.ui.components.StateArt
+import com.slopus.happy.ui.components.FadeContent
+import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.components.StatePage
 import com.slopus.happy.ui.theme.HappyTheme
 
@@ -97,48 +98,51 @@ fun ArtifactScreen(
             ),
         )
         Box(Modifier.weight(1f).fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)) {
-            when (content) {
-                is ArtifactContent.Reading -> StatePage(title = null, body = null, art = StateArt.Waiting, tag = ArtifactTags.LOADING)
-                is ArtifactContent.Failed -> StatePage(
-                    title = stringResource(R.string.conversation_artifact_failed),
-                    body = content.reason,
-                    icon = Ionicon.CloudOfflineOutline,
-                    action = stringResource(R.string.common_retry) to onRetry,
-                    tag = ConversationScreenTags.ERROR,
-                )
-                is ArtifactContent.Ready -> when (val view = content.view) {
-                    is ArtifactView.Words -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag(ArtifactTags.WORDS)) {
-                        MarkdownView(parseMarkdown(view.markdown))
-                    }
-                    is ArtifactView.Pictures -> Column(
-                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        view.files.forEach { file ->
-                            val bytes = content.pictures[file.path]
-                            if (bytes != null) {
-                                RemoteImage(
-                                    model = bytes,
-                                    cacheKey = "artifact/${content.artifact.id}/${content.artifact.version}/${file.path}",
-                                    contentDescription = file.path,
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag(ArtifactTags.PICTURE)
-                                        .clickable(role = Role.Button) {
-                                            onOpenPicture(bytes, "artifact/${content.artifact.id}/${content.artifact.version}/${file.path}", file.path)
-                                        },
-                                )
+            // The loader fades into what was read.
+            FadeContent(content, key = { it::class }) { content ->
+                when (content) {
+                    is ArtifactContent.Reading -> LoadingIndicator(Modifier.testTag(ArtifactTags.LOADING))
+                    is ArtifactContent.Failed -> StatePage(
+                        title = stringResource(R.string.conversation_artifact_failed),
+                        body = content.reason,
+                        icon = Ionicon.CloudOfflineOutline,
+                        action = stringResource(R.string.common_retry) to onRetry,
+                        tag = ConversationScreenTags.ERROR,
+                    )
+                    is ArtifactContent.Ready -> when (val view = content.view) {
+                        is ArtifactView.Words -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag(ArtifactTags.WORDS)) {
+                            MarkdownView(parseMarkdown(view.markdown))
+                        }
+                        is ArtifactView.Pictures -> Column(
+                            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            view.files.forEach { file ->
+                                val bytes = content.pictures[file.path]
+                                if (bytes != null) {
+                                    RemoteImage(
+                                        model = bytes,
+                                        cacheKey = "artifact/${content.artifact.id}/${content.artifact.version}/${file.path}",
+                                        contentDescription = file.path,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag(ArtifactTags.PICTURE)
+                                            .clickable(role = Role.Button) {
+                                                onOpenPicture(bytes, "artifact/${content.artifact.id}/${content.artifact.version}/${file.path}", file.path)
+                                            },
+                                    )
+                                }
                             }
                         }
+                        is ArtifactView.Openable -> ArtifactOpenCard(view.file, opening, onOpenFile)
+                        is ArtifactView.NotHere -> StatePage(
+                            title = null,
+                            body = stringResource(R.string.conversation_artifact_kind_unavailable, view.kind),
+                            icon = Ionicon.LayersOutline,
+                            tag = ArtifactTags.NOT_HERE,
+                        )
                     }
-                    is ArtifactView.Openable -> ArtifactOpenCard(view.file, opening, onOpenFile)
-                    is ArtifactView.NotHere -> StatePage(
-                        title = null,
-                        body = stringResource(R.string.conversation_artifact_kind_unavailable, view.kind),
-                        icon = Ionicon.LayersOutline,
-                        tag = ArtifactTags.NOT_HERE,
-                    )
                 }
             }
         }

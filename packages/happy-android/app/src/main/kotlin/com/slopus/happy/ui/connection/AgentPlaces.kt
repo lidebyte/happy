@@ -68,8 +68,9 @@ import com.slopus.happy.conversation.Todo
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.FadeContent
+import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.components.MaterialSymbols
-import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
 import com.slopus.happy.ui.conversation.ArtifactRoute
 import com.slopus.happy.ui.conversation.ConversationScreenTags
@@ -289,15 +290,18 @@ private fun PlacePage(title: String, onBack: () -> Unit, tag: String, content: @
 
 @Composable
 private fun <T> PlaceState(read: PlaceRead<T>, failed: String, onRetry: () -> Unit, ready: @Composable (T) -> Unit) {
-    when (read) {
-        PlaceRead.Reading -> StatePage(title = null, body = null, art = StateArt.Waiting)
-        is PlaceRead.Failed -> StatePage(
-            title = failed,
-            body = read.reason,
-            icon = Ionicon.CloudOfflineOutline,
-            action = stringResource(R.string.common_retry) to onRetry,
-        )
-        is PlaceRead.Ready -> ready(read.value)
+    // The loader fades into what was read; a newer read of the same kind just redraws.
+    FadeContent(read, key = { it::class }) { read ->
+        when (read) {
+            PlaceRead.Reading -> LoadingIndicator()
+            is PlaceRead.Failed -> StatePage(
+                title = failed,
+                body = read.reason,
+                icon = Ionicon.CloudOfflineOutline,
+                action = stringResource(R.string.common_retry) to onRetry,
+            )
+            is PlaceRead.Ready -> ready(read.value)
+        }
     }
 }
 

@@ -21,7 +21,8 @@ import androidx.compose.ui.res.stringResource
 import com.slopus.happy.R
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.MaterialSymbols
-import com.slopus.happy.ui.components.StateArt
+import com.slopus.happy.ui.components.FadeContent
+import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.components.StatePage
 import com.slopus.happy.ui.theme.HappyTheme
 
@@ -55,16 +56,18 @@ fun ChiefOfStaffScreen(problem: String?, onRetry: () -> Unit, onBack: () -> Unit
             ),
         )
         Box(Modifier.weight(1f).fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)) {
-            if (problem == null) {
-                StatePage(title = null, body = null, art = StateArt.Waiting, tag = ChiefOfStaffTags.LOADING)
-            } else {
-                StatePage(
-                    title = stringResource(R.string.conversation_chief_unavailable),
-                    body = problem,
-                    icon = Ionicon.CloudOfflineOutline,
-                    action = stringResource(R.string.common_retry) to onRetry,
-                    tag = ConversationScreenTags.ERROR,
-                )
+            FadeContent(problem, key = { it == null }) { problem ->
+                if (problem == null) {
+                    LoadingIndicator(Modifier.testTag(ChiefOfStaffTags.LOADING))
+                } else {
+                    StatePage(
+                        title = stringResource(R.string.conversation_chief_unavailable),
+                        body = problem,
+                        icon = Ionicon.CloudOfflineOutline,
+                        action = stringResource(R.string.common_retry) to onRetry,
+                        tag = ConversationScreenTags.ERROR,
+                    )
+                }
             }
         }
     }
