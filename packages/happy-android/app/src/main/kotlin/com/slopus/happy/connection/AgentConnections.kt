@@ -56,6 +56,13 @@ class AgentConnections(
     suspend fun credentials(id: String): AgentConnectionCredentials? = withContext(Dispatchers.IO) { read(id) }
 
     /**
+     * What [id]'s placeholder picture is picked by (happy-ios's
+     * `placeholderSeed(for:)`): its computer's address, the same on every
+     * phone paired with it; null when its credentials are gone.
+     */
+    suspend fun placeholderSeed(id: String): String? = credentials(id)?.let { "agent:${it.address}" }
+
+    /**
      * Keeps a freshly paired agent. Its own name and avatar are read first
      * when it answers; otherwise it is listed under [fallbackName] (the
      * pairing code's) until it does. Pairing the same device again updates

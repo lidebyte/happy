@@ -5,7 +5,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toArgb
@@ -28,6 +31,8 @@ import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentPictures
+import com.slopus.happy.ui.components.avatar.AvatarPlaceholder
+import com.slopus.happy.ui.components.avatar.PlaceholderIndexKey
 import com.slopus.happy.agent.Wire
 import com.slopus.happy.agent.WireDesktopBootstrap
 import com.slopus.happy.ui.PHONE
@@ -220,10 +225,10 @@ class AgentHomeLayoutTest {
     }
 
     @Test
-    fun botsAndTasksWearAMarkAndSubtasksAndProjectConversationsNone() {
+    fun botsTasksAndProjectsWearAMarkAndSubtasksAndProjectConversationsNone() {
         show(feed())
-        // Artifacts, the two Surfaces, the two bots and the three tasks.
-        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(8)
+        // Artifacts, the two Surfaces, the two bots, the three tasks and the project.
+        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(9)
         val bot = rule.node(AgentHomeTags.row("agent-ab1")).bounds
         val mark = rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true)[3].bounds
         // The card 16 in from the window, the mark 16 in from the card.
@@ -232,7 +237,7 @@ class AgentHomeLayoutTest {
         assertDp("a bot's title follows its mark", 32 + 30 + 12, titleStart("Happy"))
         assertDp("a task's too", 32 + 30 + 12, titleStart("Fix login redirect"))
         assertDp("a subtask's starts under its parent's title", 32 + 42, titleStart("Review the PR"))
-        assertDp("a project starts where a mark would", 32, titleStart("happy"))
+        assertDp("a project's title follows its mark", 32 + 30 + 12, titleStart("happy"))
         assertDp("its conversation a level in", 32 + 42, titleStart("Android home feed"))
         assertDp("a worktree a level in", 32 + 42, titleStart("fix-scroll"))
         assertDp("and its conversation two", 32 + 84, titleStart("Scroll jumps"))
@@ -287,11 +292,24 @@ class AgentHomeLayoutTest {
         rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(3)
     }
 
+    /** A bot without a picture, a task and a project without one wear the placeholder their own ids pick, as on happy-ios. */
     @Test
-    fun aClonedReposPictureIsReadToo() {
+    fun marksWithoutAPictureAreTheirIdsPlaceholders() {
+        show(feed())
+        fun wears(rowKey: String): Int = rule.onNode(
+            SemanticsMatcher.keyIsDefined(PlaceholderIndexKey) and hasAnyAncestor(hasTestTag(AgentHomeTags.row(rowKey))),
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().config[PlaceholderIndexKey]
+        assertEquals(AvatarPlaceholder.index("b1"), wears("agent-ab1"))
+        assertEquals(AvatarPlaceholder.index("t2"), wears("agent-at2"))
+        assertEquals(AvatarPlaceholder.index("p1"), wears("folder-p1"))
+    }
+
+    @Test
+    fun aProjectsPictureIsReadToo() {
         val read = mutableListOf<String>()
         val pictures = AgentPictures("agent-connection-1") { path -> read += path; ByteArray(0) }
-        val bootstrap = Wire.bootstrap(projects = listOf(Wire.project("p1", "happy", emptyList(), avatarUrl = "/v0/projects/p1/avatar")))
+        val bootstrap = Wire.bootstrap(projects = listOf(Wire.project("p1", "happy", emptyList(), avatar = "image", thumbhash = "3OcRJYB4d3h3iIeHeEh3eIhw+j2w")))
         rule.setHappyContent {
             CompositionLocalProvider(LocalAgentPictures provides pictures) {
                 AgentHomeScreen("Studio", feed(bootstrap), AgentLinkStatus.Connected, accounts, actions, now = NOW)

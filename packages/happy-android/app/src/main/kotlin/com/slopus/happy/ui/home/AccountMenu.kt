@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +54,8 @@ data class AccountMenuEntry(
     val active: Boolean = false,
     /** Can't open as it is: revoked, or its server needs confirming. */
     val attention: Boolean = false,
+    /** What its placeholder is picked by: a Happy account its id, an agent connection its computer's address ([AgentConnections.placeholderSeed]). */
+    val seed: String = id,
 )
 
 /** What Home's avatar menu lists: Happy accounts first, then agent connections, each oldest first. */
@@ -66,8 +69,11 @@ data class AccountMenu(val entries: List<AccountMenuEntry> = emptyList()) {
 fun rememberAccountMenu(graph: AppGraph): AccountMenu {
     val registry by graph.accountStore.registry.collectAsStateWithLifecycle()
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
+    val seeds by produceState(emptyMap<String, String>(), agents) {
+        value = agents.mapNotNull { agent -> graph.agentConnections.placeholderSeed(agent.id)?.let { agent.id to it } }.toMap()
+    }
     val defaultUrl = graph.serverConfig.defaultUrl
-    return remember(registry, agents, defaultUrl) {
+    return remember(registry, agents, seeds, defaultUrl) {
         AccountMenu(
             registry.ordered.map { entry ->
                 AccountMenuEntry(
@@ -82,6 +88,7 @@ fun rememberAccountMenu(graph: AppGraph): AccountMenu {
             } + agents.sortedBy { it.addedAt }.map { agent ->
                 AccountMenuEntry(
                     id = agent.id,
+                    seed = seeds[agent.id] ?: agent.id,
                     name = agent.name,
                     imageUrl = agent.avatarFile?.let { "file://$it" },
                     thumbhash = agent.thumbhash,
@@ -138,7 +145,7 @@ fun AccountMenuButton(
             contentAlignment = Alignment.Center,
         ) {
             if (active != null) {
-                Avatar(active.id, AccountMenuSpec.avatar, imageUri = active.imageUrl, thumbhash = active.thumbhash)
+                Avatar(active.seed, AccountMenuSpec.avatar, imageUri = active.imageUrl, thumbhash = active.thumbhash, animated = false)
             } else {
                 Icon(Ionicon.PersonCircleOutline, AccountMenuSpec.avatar, colors.header.tint)
             }
@@ -151,7 +158,7 @@ fun AccountMenuButton(
             for (entry in menu.entries) {
                 DropdownMenuItem(
                     text = { EntryText(entry) },
-                    leadingIcon = { Avatar(entry.id, AccountMenuSpec.rowAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash) },
+                    leadingIcon = { Avatar(entry.seed, AccountMenuSpec.rowAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
                     trailingIcon = when {
                         entry.active -> { { Icon(Ionicon.Checkmark, 20.dp, colors.text) } }
                         entry.attention -> { { Icon(Ionicon.AlertCircleOutline, 20.dp, colors.textDestructive) } }

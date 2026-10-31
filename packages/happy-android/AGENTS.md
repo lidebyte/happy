@@ -769,6 +769,31 @@ loader uses its own OkHttp client without Happy headers (these URLs are
 third-party). Tests swap it through `LocalImageLoader` with coil-test's
 `FakeImageLoaderEngine`.
 
+### Avatars
+
+Anything without a picture wears happy-ios's shader placeholder
+(`ui/components/avatar/`): `AvatarPlaceholder.index(seed)` (FNV-1a then
+the Murmur3 finalizer, mod 200) picks one of 200 bundled WebP stills, and
+`AvatarShader` carries the same row's parameters for the AGSL port of
+happy-ios's Metal shader, so one seed looks the same on both phones. The
+stills, their NOTICE and the MIT license of @craftedstudios/shaders are
+copied from happy-ios, and `AvatarShaderTable.kt` is generated from its
+Swift table, by `node tools/avatars/generate.mjs`; tests pin both
+byte-for-byte to happy-ios, so change them there and regenerate. Keep the
+NOTICE and license in `assets/avatar-placeholders/`.
+
+Placeholders move only with Settings › Appearance › Animated Avatars on
+(device-local, off by default), on Android 13+ (`RuntimeShader`), while
+their screen is resumed, animations aren't removed and power save is off;
+at most 32 at once on one shared ~20 fps Choreographer clock
+(`LiveAvatarClock`). The account menu and settings rows pass
+`animated = false`. Seeds follow happy-ios: an agent connection is
+`agent:<address>`, a bot or task its own id, a project its id. Agent
+home's project folders read the wire's `avatar`: `kind: "image"` is
+`/v0/projects/:id/avatar` over its thumbhash, `"home"` the home glyph,
+anything else the placeholder (happy-ios still looks for a `url` the wire
+doesn't carry).
+
 ### Mermaid
 
 `ui/components/MermaidView.kt` renders ```` ```mermaid ```` blocks the way

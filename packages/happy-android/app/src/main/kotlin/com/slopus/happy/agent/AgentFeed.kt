@@ -29,10 +29,10 @@ sealed interface AgentFeedRow {
 
     /**
      * A project, or one of its worktrees at [depth] 1: its conversations
-     * follow, a level in. It opens nothing. [picture] is the repo's own,
-     * for a repo the agent cloned (`project.avatar`); null for any other.
+     * follow, a level in. It opens nothing. A project wears a [mark]; a
+     * worktree none.
      */
-    data class Folder(val id: String, val name: String, val depth: Int, val picture: String? = null) : AgentFeedRow {
+    data class Folder(val id: String, val name: String, val depth: Int, val mark: FolderMark? = null) : AgentFeedRow {
         override val key get() = "folder-$id"
     }
 
@@ -46,6 +46,10 @@ sealed interface AgentFeedRow {
         /** A bot's picture as the agent serves it (`/v0/bots/:id/avatar`) and its ThumbHash; null where it has none. */
         val picture: String? = null,
         val thumbhash: String? = null,
+        /** What a bot or task wears without a picture: the placeholder its own ID picks (happy-ios's `.placeholder(seed:)`). */
+        val seed: String? = null,
+        /** The person's Happy (the `chief_of_staff` bot): Happy's mark, as on happy-ios. */
+        val happy: Boolean = false,
         val working: Boolean = false,
         val unread: Boolean = false,
         /** A question waits for the person. */
@@ -59,6 +63,37 @@ sealed interface AgentFeedRow {
 }
 
 enum class ConversationKind { Bot, Task, Project, Subtask }
+
+/** What a project's folder wears (API.md "Projects", `avatar`). */
+@Immutable
+sealed interface FolderMark {
+    /** The project picture the person chose or the agent made, read from [path] over its [thumbhash]. */
+    data class Picture(val path: String, val thumbhash: String?) : FolderMark
+
+    /** The built-in home project (`{ "kind": "home" }`): desktop's home glyph; it has no picture. */
+    data object Home : FolderMark
+
+    /** No picture: the placeholder the project's ID picks, as everything else without one wears. */
+    data class Placeholder(val seed: String) : FolderMark
+
+    companion object {
+        /**
+         * [project]'s mark from its `avatar`: `kind: "image"` is a picture
+         * at `GET /v0/projects/:id/avatar`, `kind: "home"` the home
+         * project; null or anything else is no picture. The wire carries
+         * no URL (desktop's `avatar.url` is its own renderer's projection),
+         * so the picture is always the agent's own, read over the tunnel.
+         */
+        fun of(id: String, project: JsonObject): FolderMark {
+            val avatar = project["avatar"] as? JsonObject
+            return when (avatar?.string("kind")) {
+                "image" -> Picture("/v0/projects/${AgentClient.escape(id)}/avatar", avatar.string("thumbhash"))
+                "home" -> Home
+                else -> Placeholder(id)
+            }
+        }
+    }
+}
 
 enum class AgentFeedSection(val key: String) { Places("places"), Bots("bots"), Tasks("tasks"), Projects("projects") }
 
@@ -98,6 +133,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             fun agentRows(
                 agentId: String, title: String?, kind: ConversationKind, depth: Int,
                 picture: String? = null, thumbhash: String? = null, parentId: String? = null, nesting: Int = 0,
+                seed: String? = null, happy: Boolean = false,
             ) {
                 val agent = catalog.agents[agentId] ?: return
                 val wire = AgentCatalog.decodeAgent(agent) ?: return
@@ -109,6 +145,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     depth = depth,
                     picture = picture,
                     thumbhash = thumbhash,
+                    seed = seed,
+                    happy = happy,
                     working = wire.working,
                     unread = wire.unread != null,
                     blocked = wire.pendingQuestionId != null,
@@ -164,21 +202,20 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     val id = bot.string("id") ?: return@forEach
                     val avatar = bot["avatar"] as? JsonObject
                     val picture = avatar?.let { "/v0/bots/${AgentClient.escape(id)}/avatar" }
-                    agentRows(agentId, bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"))
+                    val happy = bot.string("systemKey") == "chief_of_staff"
+                    agentRows(agentId, bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"), seed = id, happy = happy)
                 }
             }
             section(AgentFeedSection.Tasks) {
                 tasks.forEach { task ->
                     val agentId = (task["agent"] as? JsonObject)?.string("id") ?: return@forEach
-                    agentRows(agentId, task.string("name"), ConversationKind.Task, 0)
+                    agentRows(agentId, task.string("name"), ConversationKind.Task, 0, seed = task.string("id") ?: agentId)
                 }
             }
             section(AgentFeedSection.Projects) {
                 catalog.projects.values.filter(::active).sortedWith(byOrderKey).forEach { project ->
                     val id = project.string("id") ?: return@forEach
-                    // Only a picture the agent serves itself: a cloned repo's.
-                    val picture = (project["avatar"] as? JsonObject)?.string("url")?.takeIf { it.startsWith("/v0/") }
-                    rows += AgentFeedRow.Folder(id, project.string("name").orEmpty(), 0, picture)
+                    rows += AgentFeedRow.Folder(id, project.string("name").orEmpty(), 0, FolderMark.of(id, project))
                     fun series(owner: JsonObject, depth: Int) {
                         (owner["agents"] as? JsonArray).orEmpty().forEach { embedded ->
                             val agentId = (embedded as? JsonObject)?.string("id") ?: return@forEach

@@ -1,5 +1,7 @@
 package com.slopus.happy.agent
 
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
@@ -64,19 +66,70 @@ class AgentFeedTest {
         for (id in listOf("ab1", "as1", "at1", "ap1", "aw1")) assertEquals(id, null, rows.getValue(id).picture)
     }
 
+    /**
+     * API.md "Projects": `avatar` is `{kind: "image", thumbhash, source}`
+     * (bytes at /v0/projects/:id/avatar, whether the person chose it for a
+     * local folder or the agent made it), `{kind: "home"}`, or null. A
+     * project without a picture wears the placeholder its id picks; a
+     * worktree wears nothing.
+     */
     @Test
-    fun aClonedRepoWearsItsPictureAndASubtasksWorktreeIsListedOnce() {
+    fun everyProjectWearsAMarkAndASubtasksWorktreeIsListedOnce() {
         val feed = AgentFeed.derive(catalog(Wire.bootstrap(
             bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1", subtasks = listOf(Wire.agent("as1", subtask = true, parent = "ab1", workspaceId = "w2"))))),
             projects = listOf(
-                Wire.project("p1", "happy", emptyList(), avatarUrl = "/v0/projects/p1/avatar"),
-                Wire.project("p2", "site", emptyList(), orderKey = "2", avatarUrl = "https://example.com/a.png"),
+                Wire.project("p1", "happy", emptyList(), avatar = "image", thumbhash = "3OcRJYB4d3h3iIeHeEh3eIhw+j2w"),
+                Wire.project("p2", "site", emptyList(), orderKey = "2"),
+                Wire.project("home", "Home", emptyList(), orderKey = "3", avatar = "home"),
+                Wire.project("p/4", "odd", emptyList(), orderKey = "4", avatar = "image"),
             ),
             workspaces = listOf(Wire.workspace("w1", "p1", "feature", emptyList()), Wire.workspace("w2", "p1", "subtask-tree", emptyList(), orderKey = "2")),
         )))
         val folders = feed.rows.filterIsInstance<AgentFeedRow.Folder>()
-        assertEquals(listOf("happy", "feature", "site"), folders.map { it.name })
-        assertEquals(listOf("/v0/projects/p1/avatar", null, null), folders.map { it.picture })
+        assertEquals(listOf("happy", "feature", "site", "Home", "odd"), folders.map { it.name })
+        assertEquals(
+            listOf(
+                FolderMark.Picture("/v0/projects/p1/avatar", "3OcRJYB4d3h3iIeHeEh3eIhw+j2w"),
+                null,
+                FolderMark.Placeholder("p2"),
+                FolderMark.Home,
+                FolderMark.Picture("/v0/projects/p%2F4/avatar", null),
+            ),
+            folders.map { it.mark },
+        )
+    }
+
+    /** An avatar the wire doesn't describe (an unknown kind, desktop's own `url` form) is no picture. */
+    @Test
+    fun anUnknownProjectAvatarIsThePlaceholder() {
+        val project = buildJsonObject {
+            put("id", "p1")
+            put("avatar", buildJsonObject { put("url", "https://example.com/a.png") })
+        }
+        assertEquals(FolderMark.Placeholder("p1"), FolderMark.of("p1", project))
+        assertEquals(FolderMark.Placeholder("p1"), FolderMark.of("p1", buildJsonObject { put("id", "p1") }))
+    }
+
+    /**
+     * happy-ios SidebarRows: a bot or task wears the placeholder its own
+     * (owner) id picks, unless it is the person's Happy (Happy's mark) or a
+     * bot with a picture; a subtask and a project's conversation wear none.
+     */
+    @Test
+    fun botsAndTasksArePlacedByTheirOwnIds() {
+        val feed = AgentFeed.derive(catalog(Wire.bootstrap(
+            bots = listOf(
+                Wire.bot("b1", "Scout", Wire.agent("ab1")),
+                Wire.bot("b2", "Happy", Wire.agent("ab2"), orderKey = "2").let { JsonObject(it + ("systemKey" to JsonPrimitive("chief_of_staff"))) },
+            ),
+            tasks = listOf(Wire.task("t1", "Ship", Wire.agent("at1"))),
+            memberships = listOf(Wire.membership("t1", "1")),
+        )))
+        val rows = feed.conversations.associateBy { it.agentId }
+        assertEquals("b1", rows.getValue("ab1").seed)
+        assertFalse(rows.getValue("ab1").happy)
+        assertTrue(rows.getValue("ab2").happy)
+        assertEquals("t1", rows.getValue("at1").seed)
     }
 
     @Test

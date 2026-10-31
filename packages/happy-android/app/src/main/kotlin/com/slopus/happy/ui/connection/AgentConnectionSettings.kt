@@ -100,7 +100,7 @@ fun AgentConnectionSettingsScreen(
     status: AgentLinkStatus,
     accounts: AccountMenu,
     actions: AgentSettingsActions,
-    /** The agent's own picture, kept on this phone (`file://`); null shows the generated one. */
+    /** The agent's own picture, kept on this phone (`file://`); null shows its placeholder. */
     picture: String? = null,
 ) {
     val colors = HappyTheme.colors
@@ -123,7 +123,7 @@ fun AgentConnectionSettingsScreen(
                 Item(
                     title = name,
                     subtitle = statusText(status),
-                    icon = { Avatar(connectionId, 48.dp, imageUri = picture, thumbhash = thumbhash) },
+                    icon = { Avatar(accounts.entries.firstOrNull { it.id == connectionId }?.seed ?: connectionId, 48.dp, imageUri = picture, thumbhash = thumbhash, animated = false) },
                     showChevron = false,
                     modifier = Modifier.testTag(AgentSettingsTags.STATUS),
                 )
@@ -204,7 +204,7 @@ private fun AccountRow(entry: AccountMenuEntry, onSwitch: (String) -> Unit) {
     Item(
         title = name,
         subtitle = entry.detail ?: if (entry.agent) stringResource(R.string.account_menu_agent) else null,
-        icon = { Avatar(entry.id, 32.dp, imageUri = entry.imageUrl, thumbhash = entry.thumbhash) },
+        icon = { Avatar(entry.seed, 32.dp, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
         rightElement = when {
             entry.active -> { { Icon(Ionicon.Checkmark, 22.dp, colors.text) } }
             entry.attention -> { { Icon(Ionicon.AlertCircleOutline, 22.dp, colors.textDestructive) } }
