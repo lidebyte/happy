@@ -242,6 +242,7 @@ final class SidebarList: UIView {
 
     private func show(_ next: Prepared) {
         let previousIDs = prepared?.entries.map(\.row.id)
+        let target = anchor(next)
         prepared = next
         var shown: [SidebarItem] = []
         var kept: [String: SidebarItem] = [:]
@@ -261,7 +262,7 @@ final class SidebarList: UIView {
         let structural = previousIDs != nil && previousIDs != next.entries.map(\.row.id)
         let animated = structural && window != nil && !UIAccessibility.isReduceMotionEnabled
         ApplyPerf.measure(.homeList) {
-            list.applyChanges(items: shown, newSize: bounds.size, anchorMode: .automatic, compensatesInsetChange: false, transition: animated ? .easeInOut(0.25) : .none)
+            list.applyChanges(items: shown, newSize: bounds.size, scrollTo: target, anchorMode: .automatic, compensatesInsetChange: false, transition: animated ? .easeInOut(0.25) : .none)
             return touched
         }
         edge.contentSize = CGSize(width: bounds.width, height: next.contentHeight)
@@ -269,6 +270,30 @@ final class SidebarList: UIView {
         let waiting = waiters
         waiters = []
         for waiter in waiting { waiter.resume() }
+    }
+
+    /// The reader's place, kept: rows that changed above what is on screen
+    /// would otherwise push everything under the eye (a conversation added
+    /// or archived elsewhere, Prioritizing's reordering). The unchanged row
+    /// `SidebarScrollAnchor` picks stays where it is; at its top the list
+    /// stays at its top, so arrivals show.
+    private func anchor(_ next: Prepared) -> ListScrollTarget? {
+        guard let previous = prepared?.entries, !previous.isEmpty, bounds.height > 0, !isAtTop else { return nil }
+        let ids = previous.map(\.row.id)
+        let nextIDs = next.entries.map(\.row.id)
+        guard ids != nextIDs else { return nil }
+        let offset = contentOffsetY
+        let viewport = CGRect(x: 0, y: offset + contentInsets.top, width: bounds.width, height: bounds.height - contentInsets.top - contentInsets.bottom)
+        let boxes = previous.map { $0.box.offsetBy(dx: 0, dy: $0.top) }
+        let nextBoxes = next.entries.map { $0.box.offsetBy(dx: 0, dy: $0.top) }
+        guard let index = SidebarScrollAnchor.index(previous: ids, next: nextIDs, boxes: boxes, nextBoxes: nextBoxes, viewport: viewport),
+              let nextIndex = nextIDs.firstIndex(of: ids[index]) else { return nil }
+        let moved = nextBoxes[nextIndex].minY - boxes[index].minY
+        let top = -contentInsets.top
+        let bottom = max(top, next.contentHeight + contentInsets.bottom - bounds.height)
+        let place = min(bottom, max(top, offset + moved))
+        // The anchor's slot top lands this far past the inset's edge.
+        return ListScrollTarget(index: nextIndex, identity: nextIDs[nextIndex], pointOffset: next.entries[nextIndex].top - place - contentInsets.top)
     }
 
     // MARK: Place

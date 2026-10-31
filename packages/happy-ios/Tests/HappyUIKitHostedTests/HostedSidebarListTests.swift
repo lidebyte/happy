@@ -216,6 +216,83 @@ final class HostedSidebarListTests: XCTestCase {
         XCTAssertEqual(window.isKeyWindow, true)
     }
 
+    // MARK: The reader's place (`HostedSidebarAnchorTests`, on home's list)
+
+    private func scrolled() async throws -> (UIWindow, SidebarList, [Row]) {
+        let (window, root) = try await host(.light)
+        let rows = (0..<100).map { Row(id: "row:\($0)", nodeId: "\($0)", kind: .space, label: "Task \($0)") }
+        let list = await list(in: root, rows: rows, frame: window.bounds)
+        list.setInsets(UIEdgeInsets(top: 100, left: 0, bottom: 34, right: 0), indicator: .zero, keepsTop: true)
+        list.setContentOffsetY(1300)
+        try await Task.sleep(for: .milliseconds(150))
+        return (window, list, rows)
+    }
+
+    private func y(_ id: String, _ list: SidebarList, _ window: UIWindow) throws -> CGFloat {
+        let view = try XCTUnwrap(list.view(for: id), id)
+        return view.convert(view.box.origin, to: window).y
+    }
+
+    /// The first row on screen goes, or moves away below the screen: the
+    /// one under it stays. (A move within the screen keeps whichever group
+    /// of rows is larger, see `SidebarScrollAnchor`.)
+    func testDeletingOrMovingTheFirstVisibleRowKeepsItsNeighborSteady() async throws {
+        for move in [false, true] {
+            let (window, list, rows) = try await scrolled()
+            let first = try XCTUnwrap(list.visibleRows.first)
+            let neighbor = try XCTUnwrap(list.visibleRows.dropFirst().first)
+            let before = try y(neighbor.id, list, window)
+            var updated = rows
+            let index = try XCTUnwrap(updated.firstIndex { $0.id == first.id })
+            let removed = updated.remove(at: index)
+            if move { updated.insert(removed, at: index + 30) }
+            list.apply(updated)
+            await list.settle()
+            XCTAssertEqual(try y(neighbor.id, list, window), before, accuracy: 0.01, move ? "moved" : "deleted")
+            window.isHidden = true
+        }
+    }
+
+    /// Two rows on screen swap: the rows that didn't change stay.
+    func testAnAdjacentSwapKeepsTheRestSteady() async throws {
+        let (window, list, rows) = try await scrolled()
+        let first = try XCTUnwrap(list.visibleRows.first)
+        let neighbor = try XCTUnwrap(list.visibleRows.dropFirst(2).first)
+        let before = try y(neighbor.id, list, window)
+        var updated = rows
+        let index = try XCTUnwrap(updated.firstIndex { $0.id == first.id })
+        updated.swapAt(index, index + 1)
+        list.apply(updated)
+        await list.settle()
+        XCTAssertEqual(try y(neighbor.id, list, window), before, accuracy: 0.01)
+    }
+
+    /// Renames, statuses and unread flags that keep every row's size never
+    /// move the list, at its top, in the middle or at its end.
+    func testSameSizeUpdatesNeverMoveTheList() async throws {
+        let (window, list, rows) = try await scrolled()
+        let bottom = list.edge.contentSize.height + list.contentInsets.bottom - list.bounds.height
+        for offset in [-list.contentInsets.top, 1300, bottom] {
+            list.setContentOffsetY(offset)
+            try await Task.sleep(for: .milliseconds(100))
+            let before = list.contentOffsetY
+            let anchor = try XCTUnwrap(list.visibleRows.dropFirst().first)
+            let place = try y(anchor.id, list, window)
+            var updated = rows
+            for iteration in 0..<6 {
+                for index in updated.indices {
+                    updated[index].label = "Renamed \(index), update \(iteration)"
+                    updated[index].status = iteration.isMultiple(of: 2) ? .awaitingInput : .waiting
+                    updated[index].unread = iteration.isMultiple(of: 3)
+                }
+                list.apply(updated)
+                await list.settle()
+                XCTAssertEqual(list.contentOffsetY, before, accuracy: 0.01, "a same-size update moved the list at \(offset)")
+                XCTAssertEqual(try y(anchor.id, list, window), place, accuracy: 0.01)
+            }
+        }
+    }
+
     /// A change touches only the rows it changed: the rest keep their
     /// drawings, and a row that went is gone.
     func testAChangeRedrawsOnlyWhatChanged() async throws {
