@@ -67,7 +67,8 @@ enum class TitleAlignment { Start, Center }
  * A start-aligned title fills the space between them; a centred title is
  * laid out 64 in from both edges of the bar, independent of the controls.
  * Title 16 semibold, subtitle 12, both in the header tint. The bar is the
- * header colour, or surfaceHigh once content has scrolled under it. No shadow.
+ * header colour, or surfaceHigh once content has scrolled under it; inside a
+ * [GlassBarLayout] it has none, the glass is its ground. No shadow.
  */
 @Composable
 fun Header(
@@ -121,7 +122,13 @@ fun Header(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(if (scrolled && phone) colors.surfaceHigh else background ?: colors.header.background)
+            .then(
+                when {
+                    // On glass the glass is the ground ([GlassBarLayout]).
+                    LocalBarOnGlass.current -> Modifier
+                    else -> Modifier.background(if (scrolled && phone) colors.surfaceHigh else background ?: colors.header.background)
+                },
+            )
             .windowInsetsPadding(WindowInsets.statusBars),
     ) {
         // navigation/Header.tsx `content`: held to layout.headerMaxWidth and centred.

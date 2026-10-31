@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
@@ -127,20 +128,28 @@ fun ItemGroup(
     }
 }
 
-/** ItemList: the grouped-background scroll view, 16 of bottom padding. */
+/**
+ * ItemList: the grouped-background scroll view, 16 of bottom padding. On a
+ * [Screen] it runs under the glass header, starting with the header's room
+ * ([LocalBarInset]), so its groups scroll on under the bar.
+ */
 @Composable
 fun ItemList(
     modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val inset = LocalBarInset.current
+    if (inset != null) ClaimBarInset(inset)
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(HappyTheme.colors.grouped.background)
             .verticalScroll(scrollState),
     ) {
-        content()
+        if (inset != null) Spacer(modifier = Modifier.height(inset.top))
+        // Nested lists start where this one does.
+        CompositionLocalProvider(LocalBarInset provides null) { content() }
         Spacer(modifier = Modifier.height(ItemGroupSpec.listPaddingBottom))
     }
 }

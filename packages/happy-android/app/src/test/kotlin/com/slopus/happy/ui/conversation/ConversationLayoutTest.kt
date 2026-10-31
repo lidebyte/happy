@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -13,6 +14,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -291,8 +294,10 @@ class ConversationLayoutTest {
 
     @Test fun `the header is the screen's own colour, light and dark`() {
         var dark by mutableStateOf(false)
+        var surface = 0
         rule.setContent {
             com.slopus.happy.ui.theme.HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
+                surface = com.slopus.happy.ui.theme.HappyTheme.colors.surface.toArgb()
                 ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions())
             }
         }
@@ -301,12 +306,14 @@ class ConversationLayoutTest {
             rule.waitForIdle()
             val image = rule.onRoot().captureToImage().asAndroidBitmap()
             val bar = rule.node(ConversationScreenTags.BAR).bounds
-            val list = rule.node(ConversationScreenTags.LIST).bounds
             val density = image.width / 411f
-            // The bar's right half below its icons, and the list's right edge: both plain background.
+            // The bar's right half below its icons: the screen's own background. The bar is glass over
+            // the list, so its ground composites over the same colour and may round a step off it.
             val header = image.getPixel(image.width - 4, ((bar.bottom.value - 2) * density).toInt())
-            val content = image.getPixel(image.width - 4, ((list.top.value + 2) * density).toInt())
-            assertEquals("dark=$dark", content, header)
+            for (shift in listOf(16, 8, 0)) {
+                val step = (header shr shift and 0xff) - (surface shr shift and 0xff)
+                assertTrue("dark=$dark: #${Integer.toHexString(header)} vs #${Integer.toHexString(surface)}", step in -1..1)
+            }
             shot(if (dark) "header-dark" else "header-light")
         }
     }
@@ -315,6 +322,9 @@ class ConversationLayoutTest {
         val asks = ArrayList<Boolean>()
         show(ConversationState(created = true, loaded = true, rows = history, agent = agent, hasMore = true, olderFailed = true), actions = ConversationScreenActions(onLoadOlder = { asks += it }))
         rule.node(ConversationScreenTags.LIST).performScrollToNode(androidx.compose.ui.test.hasTestTag(ConversationScreenTags.OLDER))
+        // On to the very top, so the row is clear of the glass bar lying over the list's top. The
+        // drag starts mid-list: the bar takes touches on itself, as it should.
+        rule.node(ConversationScreenTags.LIST).performTouchInput { swipe(center, bottomCenter) }
         rule.node(ConversationScreenTags.OLDER_FAILED).assertIsDisplayed()
         shot("older-failed")
         rule.node(ConversationScreenTags.OLDER_RETRY).performClick()

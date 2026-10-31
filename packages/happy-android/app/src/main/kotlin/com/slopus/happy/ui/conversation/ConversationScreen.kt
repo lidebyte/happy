@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.animation.Crossfade
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -58,7 +59,9 @@ import com.slopus.happy.ui.chat.SessionStatusColors
 import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.chat.resolvePrimaryAction
 import com.slopus.happy.ui.chat.userMessageBubblePalette
+import com.slopus.happy.ui.components.GlassBarLayout
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.StateArt
@@ -189,106 +192,118 @@ fun ConversationScreen(
     val visible by rememberUpdatedState(actions.onVisible)
     LaunchedEffect(atNewest, state.created) { if (state.created) visible(atNewest) }
 
-    Column(modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface)) {
-        TopAppBar(
-            title = {
-                // One status line, under the title and nowhere else: the
-                // connection while it isn't live, otherwise what the agent
-                // is doing. Its room is always kept, so neither the title nor
-                // the transcript moves when the link or the work changes.
-                val working = activityLabel(state.activity)
-                val syncing = state.syncing || (state.created && !state.loaded)
-                val dot = when {
-                    connection != null -> null
-                    syncing -> colors.status.connecting
-                    state.activity == null -> colors.status.connected
-                    state.activity == Activity.AwaitingAnswer -> SessionStatusColors.attention
-                    else -> SessionStatusColors.thinking
-                }
-                val style = MaterialTheme.typography.bodySmall
-                TitleWithStatus(
-                    status = BarStatus(
-                        connection ?: if (syncing) stringResource(R.string.status_syncing)
-                        else working ?: stringResource(R.string.status_online),
-                        dot,
-                        connection == null && (syncing || state.activity != null),
-                    ),
-                    statusStyle = style,
-                    title = {
-                        // An existing chat is never "New chat", not even before it's read: blank until then.
-                        Text(
-                            state.title ?: when {
-                                !state.created -> stringResource(R.string.conversation_compose)
-                                state.loaded -> stringResource(R.string.conversation_untitled)
-                                else -> ""
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag(ConversationScreenTags.TITLE),
-                        )
-                    },
-                ) { status ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .testTag(ConversationScreenTags.SUBTITLE)
-                            .semantics { liveRegion = LiveRegionMode.Polite },
-                    ) {
-                        status.dot?.let { StatusDot(it, pulsing = status.pulsing) }
-                        Text(status.text, style = style, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    // The dock floats over the transcript, which scrolls on under its glass; the list keeps the
+    // dock's height free at its newest end, so the last message is never left under it. The bar
+    // is glass too, over the same recording: older messages scroll on under it, softened.
+    val glass = rememberGlassSource()
+    val blurs = rememberGlassBlur()
+    var dock by remember { mutableIntStateOf(0) }
+    val dockHeight = with(LocalDensity.current) { dock.toDp() }
+    GlassBarLayout(
+        modifier = modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface),
+        ground = colors.surface,
+        source = glass,
+        bar = {
+            TopAppBar(
+                title = {
+                    // One status line, under the title and nowhere else: the
+                    // connection while it isn't live, otherwise what the agent
+                    // is doing. Its room is always kept, so neither the title nor
+                    // the transcript moves when the link or the work changes.
+                    val working = activityLabel(state.activity)
+                    val syncing = state.syncing || (state.created && !state.loaded)
+                    val dot = when {
+                        connection != null -> null
+                        syncing -> colors.status.connecting
+                        state.activity == null -> colors.status.connected
+                        state.activity == Activity.AwaitingAnswer -> SessionStatusColors.attention
+                        else -> SessionStatusColors.thinking
                     }
+                    val style = MaterialTheme.typography.bodySmall
+                    TitleWithStatus(
+                        status = BarStatus(
+                            connection ?: if (syncing) stringResource(R.string.status_syncing)
+                            else working ?: stringResource(R.string.status_online),
+                            dot,
+                            connection == null && (syncing || state.activity != null),
+                        ),
+                        statusStyle = style,
+                        title = {
+                            // An existing chat is never "New chat", not even before it's read: blank until then.
+                            Text(
+                                state.title ?: when {
+                                    !state.created -> stringResource(R.string.conversation_compose)
+                                    state.loaded -> stringResource(R.string.conversation_untitled)
+                                    else -> ""
+                                },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag(ConversationScreenTags.TITLE),
+                            )
+                        },
+                    ) { status ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .testTag(ConversationScreenTags.SUBTITLE)
+                                .semantics { liveRegion = LiveRegionMode.Polite },
+                        ) {
+                            status.dot?.let { StatusDot(it, pulsing = status.pulsing) }
+                            Text(status.text, style = style, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = actions.onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
+                        Icon(MaterialSymbols.ArrowBack, stringResource(R.string.conversation_back))
+                    }
+                },
+                actions = {
+                    ConversationHeaderActions(state, actions)
+                },
+                // On the glass, light and dark: no colour of its own, scrolled or not.
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = colors.text,
+                    navigationIconContentColor = colors.text,
+                    actionIconContentColor = colors.text,
+                ),
+                modifier = Modifier.testTag(ConversationScreenTags.BAR),
+            )
+        },
+    ) { top ->
+        Box(Modifier.fillMaxSize()) {
+            val phase = when {
+                !state.loaded -> TranscriptPhase.Loading
+                state.error != null && state.rows.isEmpty() -> TranscriptPhase.Failed
+                state.rows.isEmpty() -> TranscriptPhase.Empty
+                else -> TranscriptPhase.Rows
+            }
+            // The loader fades into the transcript, and every state into the next.
+            Crossfade(phase, label = "transcript") { shown ->
+                when (shown) {
+                    TranscriptPhase.Loading -> LoadingIndicator(
+                        Modifier.padding(top = top, bottom = dockHeight).testTag(ConversationScreenTags.LOADING),
+                    )
+                    TranscriptPhase.Failed -> StatePage(
+                        title = stringResource(R.string.conversation_load_failed),
+                        body = state.error,
+                        icon = Ionicon.CloudOfflineOutline,
+                        action = stringResource(R.string.common_retry) to actions.onRetryLoad,
+                        tag = ConversationScreenTags.ERROR,
+                        modifier = Modifier.padding(top = top, bottom = dockHeight),
+                    )
+                    TranscriptPhase.Empty -> StatePage(
+                        title = null,
+                        body = stringResource(if (state.created) R.string.conversation_empty else R.string.conversation_empty_new),
+                        art = StateArt.Ready,
+                        tag = ConversationScreenTags.EMPTY,
+                        modifier = Modifier.padding(top = top, bottom = dockHeight),
+                    )
+                    TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass)
                 }
-            },
-            navigationIcon = {
-                IconButton(onClick = actions.onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
-                    Icon(MaterialSymbols.ArrowBack, stringResource(R.string.conversation_back))
-                }
-            },
-            actions = {
-                ConversationHeaderActions(state, actions)
-            },
-            // One surface with the transcript, light and dark: no tint when it scrolls under.
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = colors.surface,
-                scrolledContainerColor = colors.surface,
-                titleContentColor = colors.text,
-                navigationIconContentColor = colors.text,
-                actionIconContentColor = colors.text,
-            ),
-            modifier = Modifier.testTag(ConversationScreenTags.BAR),
-        )
-        // The dock floats over the transcript, which scrolls on under its glass; the list keeps the
-        // dock's height free at its newest end, so the last message is never left under it.
-        val glass = rememberGlassSource()
-        val blurs = rememberGlassBlur()
-        var dock by remember { mutableIntStateOf(0) }
-        val dockHeight = with(LocalDensity.current) { dock.toDp() }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when {
-                !state.loaded -> StatePage(
-                    title = null,
-                    body = null,
-                    art = StateArt.Waiting,
-                    tag = ConversationScreenTags.LOADING,
-                    modifier = Modifier.padding(bottom = dockHeight),
-                )
-                state.error != null && state.rows.isEmpty() -> StatePage(
-                    title = stringResource(R.string.conversation_load_failed),
-                    body = state.error,
-                    icon = Ionicon.CloudOfflineOutline,
-                    action = stringResource(R.string.common_retry) to actions.onRetryLoad,
-                    tag = ConversationScreenTags.ERROR,
-                    modifier = Modifier.padding(bottom = dockHeight),
-                )
-                state.rows.isEmpty() -> StatePage(
-                    title = null,
-                    body = stringResource(if (state.created) R.string.conversation_empty else R.string.conversation_empty_new),
-                    art = StateArt.Ready,
-                    tag = ConversationScreenTags.EMPTY,
-                    modifier = Modifier.padding(bottom = dockHeight),
-                )
-                else -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, dockHeight, glass)
             }
             // What scrolls under the dock goes soft and pale over its top 32, Telegram's way, full width.
             Box(
@@ -354,6 +369,8 @@ private fun Transcript(
     bubble: com.slopus.happy.ui.chat.BubblePalette,
     actions: ConversationRowActions,
     onLoadOlder: (retry: Boolean) -> Unit,
+    /** The glass bar's height over the list's oldest end, which scrolls on under it. */
+    bar: Dp,
     /** The dock's height over the list's newest end, kept clear. */
     dock: Dp,
     glass: GlassSource,
@@ -372,7 +389,7 @@ private fun Transcript(
     LazyColumn(
         state = listState,
         reverseLayout = true,
-        contentPadding = PaddingValues(bottom = dock + 8.dp),
+        contentPadding = PaddingValues(top = bar, bottom = dock + 8.dp),
         modifier = Modifier.fillMaxSize().glassSource(glass).testTag(ConversationScreenTags.LIST),
     ) {
         items(state.rows, key = ConversationRow::key, contentType = { it::class }) { row ->
@@ -397,6 +414,9 @@ private fun Transcript(
         }
     }
 }
+
+/** What the page under the bar shows. */
+private enum class TranscriptPhase { Loading, Failed, Empty, Rows }
 
 /** The bar's status line: its words, dot and whether the dot pulses. */
 private data class BarStatus(val text: String, val dot: Color?, val pulsing: Boolean)
