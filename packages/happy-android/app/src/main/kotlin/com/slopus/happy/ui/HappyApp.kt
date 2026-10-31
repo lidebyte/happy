@@ -45,6 +45,7 @@ import com.slopus.happy.ui.machine.MachineRoute
 import com.slopus.happy.ui.onboarding.onboardingRoutes
 import com.slopus.happy.ui.connection.connectAgent
 import com.slopus.happy.ui.connection.agentConnectionRoutes
+import com.slopus.happy.ui.connection.AgentAppearanceRoute
 import com.slopus.happy.ui.connection.AgentConnectionSettingsRoute
 import com.slopus.happy.ui.connection.agentHomeRoutes
 import com.slopus.happy.ui.conversation.composeConversation
@@ -53,7 +54,6 @@ import com.slopus.happy.ui.conversation.openConversation
 import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.start.Start
 import com.slopus.happy.ui.server.ServerScreen
-import com.slopus.happy.ui.settings.AppearanceRoute
 import com.slopus.happy.ui.settings.LocalizedContent
 import com.slopus.happy.ui.home.ProvideAvatarSettings
 import com.slopus.happy.ui.settings.settingsRoutes
@@ -128,7 +128,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                                     onOpenConversation = { agentId -> nav.openConversation(id, agentId) },
                                     onCompose = { nav.composeConversation(id) },
                                     onSettings = { nav.navigate(AgentConnectionSettingsRoute(id)) },
-                                    onAppearance = { nav.navigate(AppearanceRoute) },
+                                    onAppearance = { nav.navigate(AgentAppearanceRoute(id)) },
                                     onOpenArtifacts = { nav.navigate(AgentArtifactsRoute(id)) },
                                     onOpenSurface = { nav.navigate(AgentSurfaceRoute(id, it.id, it.type, it.name)) },
                                 )
@@ -148,7 +148,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
                         filesRoutes(graph, nav)
                         agentConnectionRoutes(graph, nav)
-                        agentHomeRoutes(graph, nav, onAppearance = { nav.navigate(AppearanceRoute) })
+                        agentHomeRoutes(graph, nav)
                         conversationRoutes(graph, nav)
                     }
                 }

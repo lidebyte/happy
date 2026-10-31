@@ -33,7 +33,13 @@ class AgentHomeShots {
     @get:Rule val rule = createComposeRule()
     private val dir = System.getenv("HAPPY_SHOTS_DIR")?.let(::File)
     private val actions = AgentHomeActions({}, {}, {}, {}, {}, {})
-    private val settingsActions = AgentSettingsActions({}, {}, {}, {}, {}, {})
+    private val settingsActions = AgentSettingsActions()
+    private val settingsScreen: @androidx.compose.runtime.Composable () -> Unit = {
+        AgentConnectionSettingsScreen(
+            com.slopus.happy.ui.settings.SettingsProfile("agent-connection-1", "Studio", "Connected"), accounts, settingsActions,
+            com.slopus.happy.ui.settings.AboutInfo("1.8.0 (412)"), person = AgentPerson("Steve"),
+        )
+    }
     private val accounts = AccountMenu(listOf(
         AccountMenuEntry("0123456789abcdef", "Steve"),
         AccountMenuEntry("agent-connection-1", "Studio", agent = true, active = true),
@@ -70,14 +76,14 @@ class AgentHomeShots {
     @Test fun settings() {
         assumeTrue(dir != null)
         dir!!.mkdirs()
-        rule.setHappyContent { AgentConnectionSettingsScreen("Studio", "agent-connection-1", null, AgentLinkStatus.Connected, accounts, settingsActions) }
+        rule.setHappyContent { settingsScreen() }
         save("settings")
     }
 
     @Test fun settingsDark() {
         assumeTrue(dir != null)
         dir!!.mkdirs()
-        rule.setHappyContent(dark = true) { AgentConnectionSettingsScreen("Studio", "agent-connection-1", null, AgentLinkStatus.Connected, accounts, settingsActions) }
+        rule.setHappyContent(dark = true) { settingsScreen() }
         save("settings-dark")
     }
 }
