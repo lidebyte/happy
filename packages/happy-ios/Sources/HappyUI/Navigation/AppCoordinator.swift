@@ -310,6 +310,12 @@ public final class AppCoordinator {
         } else {
             // Under settings it swaps unseen; from deeper, back to the new home.
             navigation.setViewControllers(stack, animated: animated && kept == nil)
+            // Unseen, it is still whole: a root under another screen loads
+            // its view only once back or the edge swipe starts, so the bar
+            // items it sets then (the account switcher, settings) come in
+            // after the bar's transition has begun, and only show once it
+            // ends. Loaded now, home fills its bar and list while it waits.
+            if kept != nil { root.loadViewIfNeeded() }
         }
         shell.rootDidChange() // Tablet: the sidebar follows the account.
         NotificationCenter.default.post(name: Self.rootDidChange, object: window)

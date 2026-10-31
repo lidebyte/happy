@@ -103,8 +103,8 @@ final class AccountSwitcher: NSObject {
         guard imageKeys[account.id] != key else { return }
         imageKeys[account.id] = key
         jobs[account.id]?.cancel()
-        // Its thumbhash at once, the picture when it comes.
-        if let placeholder = ProfilePictures.placeholder(account, context: context) {
+        // Its thumbhash or decoded placeholder at once, the picture when it comes.
+        if let placeholder = ProfilePictures.immediate(account, context: context) {
             images[account.id] = Self.round(placeholder, side: Self.menuPicture)
         }
         jobs[account.id] = Task { [weak self, context] in
