@@ -147,13 +147,21 @@ class AgentConnectionSettingsTest {
     @Test
     fun theBarIsThePagesOwnGreyInLight() {
         show(dark = false)
-        assertEquals(page, barCorner())
+        assertGround(page, barCorner())
     }
 
     @Test
     fun theBarIsThePagesOwnColourInDark() {
         show(dark = true)
-        assertEquals(page, barCorner())
+        assertGround(page, barCorner())
+    }
+
+    /** The bar is glass over the page: its ground composites over the same colour and may round a step off it. */
+    private fun assertGround(expected: Int, actual: Int) {
+        for (shift in listOf(16, 8, 0)) {
+            val step = (actual shr shift and 0xff) - (expected shr shift and 0xff)
+            org.junit.Assert.assertTrue("#${Integer.toHexString(actual)} vs #${Integer.toHexString(expected)}", step in -1..1)
+        }
     }
 
     @Test

@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -51,27 +52,53 @@ import kotlin.math.ceil
 /**
  * Frosted glass over scrolling content, hand-rolled on [GraphicsLayer]
  * (RenderNodes): the content records itself into one layer ([glassSource]),
- * drawn as usual; each glass surface ([glass], [glassFade]) draws that same
- * layer again, the part under it only, shrunk by [GlassSpec.downscale],
- * blurred and saturated there, then scaled back up under a tint and a
- * hairline. A layer drawn inside another stays live, so scrolling the content
- * re-blurs without the glass recording anything again. Blur needs
+ * drawn as usual; each glass surface ([glass], [glassFade], [glassBar]) draws
+ * that same layer again, the part under it only, shrunk by
+ * [GlassSpec.DOWNSCALE], blurred and saturated there, then scaled back up
+ * under a tint. A layer drawn inside another stays live, so scrolling the
+ * content re-blurs without the glass recording anything again. Blur needs
  * RenderEffect (API 31+); below that, or with [LocalGlassBlur] off, the glass
  * is its tint alone, nearly opaque.
+ *
+ * The numbers are Telegram's frosted glass (13.1.1, blur3's
+ * DownscaleScrollableNoiseSuppressor and BlurredBackgroundProviderImpl; see
+ * research/telegram-glass.md): an eighth-size copy, a 40 dp blur, saturation
+ * tripled, and the page's colour over it at 216/255 in light and 178/255
+ * in dark (bars; floating glass keeps 0.85 in dark, for contrast).
  */
 object GlassSpec {
     /** The blur runs on a copy this many times smaller; cheaper, and softer for it. */
-    const val DOWNSCALE = 4f
-    val blur = 24.dp
-    const val SATURATION = 1.4f
-    /** The tint over the blur; [FALLBACK_ALPHA] when there is no blur to see through. */
-    const val ALPHA = 0.85f
+    const val DOWNSCALE = 8f
+    /** The blur's radius at full size; [downscaledRadius] keeps it that wide on the small copy. */
+    val blur = 40.dp
+    const val SATURATION = 3f
+    /**
+     * Floating glass's tint over the blur, light and dark; [FALLBACK_ALPHA]
+     * when there is no blur to see through. Telegram's dark is 0.76; 0.85
+     * keeps the composer's placeholder at 4.5:1 over a white picture.
+     */
+    const val ALPHA = 216f / 255f
+    const val ALPHA_DARK = 0.85f
     const val FALLBACK_ALPHA = 0.94f
-    val hairline = 0.75.dp
-    /** A bar's ground over the blur: thin enough that what scrolls under shows through, softened. */
-    const val BAR_ALPHA = 0.72f
+    val hairline = 0.55.dp
+    /** A bar's ground over the blur, light and dark: Telegram's chat list bar. */
+    const val BAR_ALPHA = 216f / 255f
+    const val BAR_ALPHA_DARK = 178f / 255f
     /** How far above what it backs the fade starts. */
-    val fade = 32.dp
+    val fade = 48.dp
+
+    /**
+     * A blur [radius] for a copy [scale] times smaller that looks as wide as
+     * [radius] at full size: through sigma (hwui's 1/sqrt(3) and 0.5), not
+     * straight division, as Telegram's downscaleRadius does.
+     */
+    fun downscaledRadius(radius: Float, scale: Float): Float {
+        val sigma = if (radius > 0) SIGMA_SCALE * radius + 0.5f else 0f
+        val small = sigma / scale
+        return maxOf(1f, if (small > 0.5f) (small - 0.5f) / SIGMA_SCALE else 0f)
+    }
+
+    private const val SIGMA_SCALE = 0.57735f
 }
 
 /** Whether this OS can blur at all (RenderEffect, API 31). */
@@ -97,13 +124,16 @@ fun rememberGlassBlur(): Boolean {
 
 /** One theme's glass: [tint] over the blur, and the [edge] hairline round it. */
 @Immutable
-data class GlassColors(val tint: Color, val edge: Color) {
-    fun fill(blurs: Boolean): Color = tint.copy(alpha = if (blurs) GlassSpec.ALPHA else GlassSpec.FALLBACK_ALPHA)
+data class GlassColors(val tint: Color, val edge: Color, val alpha: Float = GlassSpec.ALPHA) {
+    fun fill(blurs: Boolean): Color = tint.copy(alpha = if (blurs) alpha else GlassSpec.FALLBACK_ALPHA)
 
     companion object {
-        /** Light: a pale grey a shade under the page, a dark hairline; dark: lifted grey, a light one. */
+        /**
+         * Light: a pale grey a shade under the page, a dark hairline; dark:
+         * lifted grey, Telegram's white hairline at 0x20.
+         */
         fun of(dark: Boolean): GlassColors =
-            if (dark) GlassColors(tint = Color(0xFF2C2C2E), edge = Color.White.copy(alpha = 0.10f))
+            if (dark) GlassColors(tint = Color(0xFF2C2C2E), edge = Color.White.copy(alpha = 0x20 / 255f), alpha = GlassSpec.ALPHA_DARK)
             else GlassColors(tint = Color(0xFFF2F2F4), edge = Color.Black.copy(alpha = 0.09f))
     }
 }
@@ -165,15 +195,17 @@ fun Modifier.glassFade(source: GlassSource?, tint: Color, blurs: Boolean): Modif
                 blurred.recordBlurOf(this, source, origin - source.origin, size)
                 drawBlurred(blurred)
             }
-            drawRect(tint.copy(alpha = if (blurs) GlassSpec.ALPHA else GlassSpec.FALLBACK_ALPHA))
+            drawRect(tint.copy(alpha = if (blurs) glassAlpha(tint) else GlassSpec.FALLBACK_ALPHA))
             val fade = (GlassSpec.fade.toPx() / size.height).coerceIn(0f, 1f)
-            // Eased in, as a straight ramp reads as a band.
+            // Telegram's fade (BlurredBackgroundWithFadeDrawable, opacity mode): 0, 0x60, 0xB0, 0xE8 of
+            // 285 over its height, eased in as a straight ramp reads as a band. Below it Telegram holds
+            // 0.81; this goes opaque, so nothing shows sharp beside a dock narrower than the window.
             drawRect(
                 Brush.verticalGradient(
                     0f to Color.Transparent,
-                    fade * 0.35f to Color.Black.copy(alpha = 0.38f),
-                    fade * 0.7f to Color.Black.copy(alpha = 0.7f),
-                    fade to Color.Black,
+                    fade / 3 to Color.Black.copy(alpha = 0x60 / 285f),
+                    fade * 2 / 3 to Color.Black.copy(alpha = 0xB0 / 285f),
+                    fade to Color.Black.copy(alpha = 0xE8 / 285f),
                     1f to Color.Black,
                 ),
                 blendMode = BlendMode.DstIn,
@@ -183,9 +215,11 @@ fun Modifier.glassFade(source: GlassSource?, tint: Color, blurs: Boolean): Modif
 
 /**
  * A top bar's glass ([GlassBarLayout]): the content under it blurred, then
- * [ground] over the blur, [GlassSpec.BAR_ALPHA] of it (nearly opaque where
- * nothing blurs). No edge: at rest the content's own ground is all that is
- * under the bar, so bar and page are one surface.
+ * [ground] over the blur, [GlassSpec.BAR_ALPHA] of it on a light ground and
+ * [GlassSpec.BAR_ALPHA_DARK] on a dark one (nearly opaque where nothing
+ * blurs). No edge, as Telegram's chat list bar has none: at rest the
+ * content's own ground is all that is under the bar, so bar and page are one
+ * surface.
  */
 fun Modifier.glassBar(source: GlassSource?, ground: Color, blurs: Boolean): Modifier = composed {
     val blurred = rememberGraphicsLayer()
@@ -197,16 +231,23 @@ fun Modifier.glassBar(source: GlassSource?, ground: Color, blurs: Boolean): Modi
                 // The blur spreads past the layer's edge: keep it to the bar.
                 clipRect { drawBlurred(blurred) }
             }
-            drawRect(ground.copy(alpha = if (blurs) GlassSpec.BAR_ALPHA else GlassSpec.FALLBACK_ALPHA))
+            val alpha = if (ground.luminance() < DARK_LUMINANCE) GlassSpec.BAR_ALPHA_DARK else GlassSpec.BAR_ALPHA
+            drawRect(ground.copy(alpha = if (blurs) alpha else GlassSpec.FALLBACK_ALPHA))
         }
 }
+
+/** Below this a ground is dark (Telegram's perceived-brightness 0.721, as relative luminance). */
+private const val DARK_LUMINANCE = 0.48f
+
+/** A fade's tint over the blur: the floating glass's, by how dark [tint] is. */
+private fun glassAlpha(tint: Color): Float = if (tint.luminance() < DARK_LUMINANCE) GlassSpec.ALPHA_DARK else GlassSpec.ALPHA
 
 private val saturate = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(GlassSpec.SATURATION) })
 
 /** Records the part of [source] at [offset] under a [size] glass, shrunk and blurred. */
 private fun GraphicsLayer.recordBlurOf(scope: DrawScope, source: GlassSource, offset: Offset, size: Size) {
     val k = GlassSpec.DOWNSCALE
-    val radius = with(scope) { GlassSpec.blur.toPx() } / k
+    val radius = GlassSpec.downscaledRadius(with(scope) { GlassSpec.blur.toPx() }, k)
     if (renderEffect == null) {
         renderEffect = BlurEffect(radius, radius, TileMode.Clamp)
         colorFilter = saturate

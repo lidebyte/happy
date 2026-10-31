@@ -194,7 +194,9 @@ class AgentHomeLayoutTest {
             AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions)
         }
         val bar = rule.node(AgentHomeTags.BAR).captureToImage().toPixelMap()
-        assertEquals(surface, bar[bar.width / 2, 4].toArgb())
+        // Glass over the page: its ground composites over the same colour and may round a step off it.
+        val ground = bar[bar.width / 2, 4].toArgb()
+        for (shift in listOf(16, 8, 0)) assertTrue((ground shr shift and 0xff) - (surface shr shift and 0xff) in -1..1)
         val list = rule.node(AgentHomeTags.LIST).captureToImage().toPixelMap()
         assertEquals(surface, list[list.width / 2, list.height - 4].toArgb())
     }
