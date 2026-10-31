@@ -155,7 +155,7 @@ class HomeLayoutTest {
         // The account menu on the left; settings, then compose at the far right.
         val account = rule.node(AccountMenuTags.BUTTON).bounds
         assertDp("account menu centred in the bar", 32, (account.top + account.bottom) / 2)
-        assertDp("account menu size", 44, account.right - account.left)
+        assertDp("account menu size", 48, account.right - account.left)
         val compose = rule.node(HomeTags.COMPOSE).bounds
         assertBox("compose", compose, (PHONE_WIDTH - 16 - 44).dp, 10.dp, 44.dp, 44.dp)
         assertBox("settings", rule.node(HomeTags.SETTINGS).bounds, compose.left - 44.dp, 10.dp, 44.dp, 44.dp)

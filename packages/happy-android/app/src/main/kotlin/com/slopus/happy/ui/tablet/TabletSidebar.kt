@@ -229,7 +229,7 @@ fun TabletSidebarContent(
         ) {
             // The shell hides the phone's home bar, so the account switcher lives here instead,
             // beside New session and in reach whatever the detail pane shows.
-            AccountMenuButton(accounts, onSwitchAccount)
+            AccountMenuButton(accounts, onSwitchAccount, inset = 0.dp)
             NewSessionButton(host.navigation.onNewSession, Modifier.weight(1f))
             if (state?.hasArchivedSessions == true) {
                 ArchiveButton(hidden = state.archiveHidden, onClick = { host.callbacks.onSetArchiveHidden(!state.archiveHidden) })
