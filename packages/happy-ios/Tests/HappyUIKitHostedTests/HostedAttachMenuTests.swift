@@ -131,7 +131,7 @@ final class HostedAttachMenuTests: XCTestCase {
             let allowed = await engine.deliveryAllowed
             XCTAssertTrue(allowed, "the outbox never opened")
         }
-        chat = ChatViewController(session: session, agentId: "attach-test", title: "Attach menu", spaceId: nil, seedling: nil)
+        chat = ChatViewController(session: session, agentId: "attach-test", title: "Attach menu", spaceId: nil, intro: nil)
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: chat)
         self.window = window
         window.layoutIfNeeded()

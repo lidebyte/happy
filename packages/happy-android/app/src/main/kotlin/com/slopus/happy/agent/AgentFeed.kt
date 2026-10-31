@@ -30,9 +30,11 @@ sealed interface AgentFeedRow {
     /**
      * A project, or one of its worktrees at [depth] 1: its conversations
      * follow, a level in. It opens nothing. A project wears a [mark]; a
-     * worktree none.
+     * worktree none. [running]: work runs in one of the conversations under
+     * it and none waits on a question (desktop's project and workspace
+     * `activity`).
      */
-    data class Folder(val id: String, val name: String, val depth: Int, val mark: FolderMark? = null) : AgentFeedRow {
+    data class Folder(val id: String, val name: String, val depth: Int, val mark: FolderMark? = null, val running: Boolean = false) : AgentFeedRow {
         override val key get() = "folder-$id"
     }
 
@@ -57,8 +59,20 @@ sealed interface AgentFeedRow {
         val activityAt: Long = 0,
         /** The conversation this subtask is under; null for any other. */
         val parentId: String? = null,
+        /** Its turn sits in a scheduled wait. */
+        val waiting: Boolean = false,
+        /** One of its subtasks listed under it is [running]. */
+        val delegating: Boolean = false,
     ) : AgentFeedRow {
         override val key get() = "agent-$agentId"
+
+        /**
+         * Desktop's `activity == "running"` (summaryActivity): a question
+         * waiting on the person outranks everything; then work handed to a
+         * subtask counts as this conversation's; then its own turn runs,
+         * outside a scheduled wait. A running conversation's title shimmers.
+         */
+        val running: Boolean get() = !blocked && (delegating || (working && !waiting))
     }
 }
 
@@ -132,14 +146,16 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             fun active(resource: JsonObject) = resource["archivedAt"].isNullish() &&
                 (resource.string("status") ?: "active") == "active"
 
+            /** Adds the conversation's row and its subtasks'; whether it is running. */
             fun agentRows(
                 agentId: String, title: String?, kind: ConversationKind, depth: Int,
                 picture: String? = null, thumbhash: String? = null, parentId: String? = null, nesting: Int = 0,
                 seed: String? = null, happy: Boolean = false,
-            ) {
-                val agent = catalog.agents[agentId] ?: return
-                val wire = AgentCatalog.decodeAgent(agent) ?: return
-                if (wire.archivedAt != null || !wire.visible || !shown.add(agentId)) return
+            ): Boolean {
+                val agent = catalog.agents[agentId] ?: return false
+                val wire = AgentCatalog.decodeAgent(agent) ?: return false
+                if (wire.archivedAt != null || !wire.visible || !shown.add(agentId)) return false
+                val at = rows.size
                 rows += AgentFeedRow.Conversation(
                     agentId = agentId,
                     title = title?.takeIf { it.isNotBlank() } ?: wire.title?.takeIf { it.isNotBlank() },
@@ -154,12 +170,24 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     blocked = wire.pendingQuestionId != null,
                     activityAt = wire.unread?.since ?: wire.updatedAt,
                     parentId = parentId,
+                    waiting = wire.wait != null,
                 )
-                if (nesting >= 2) return
-                for (child in (agent["subtasks"] as? JsonArray).orEmpty()) {
-                    val childId = (child as? JsonObject)?.string("id") ?: continue
-                    agentRows(childId, null, ConversationKind.Subtask, depth + 1, parentId = agentId, nesting = nesting + 1)
+                var delegating = false
+                if (nesting < 2) {
+                    for (child in (agent["subtasks"] as? JsonArray).orEmpty()) {
+                        val childId = (child as? JsonObject)?.string("id") ?: continue
+                        if (agentRows(childId, null, ConversationKind.Subtask, depth + 1, parentId = agentId, nesting = nesting + 1)) delegating = true
+                    }
                 }
+                val row = rows[at] as AgentFeedRow.Conversation
+                if (delegating) rows[at] = row.copy(delegating = true)
+                return (rows[at] as AgentFeedRow.Conversation).running
+            }
+
+            /** Marks the folder at [at] running when a conversation listed after it runs and none waits on a question. */
+            fun folderActivity(at: Int) {
+                val under = rows.subList(at + 1, rows.size).filterIsInstance<AgentFeedRow.Conversation>()
+                if (under.none { it.blocked } && under.any { it.running }) rows[at] = (rows[at] as AgentFeedRow.Folder).copy(running = true)
             }
 
             fun section(section: AgentFeedSection, body: () -> Unit) {
@@ -217,6 +245,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             if (!catalog.projectsHidden) section(AgentFeedSection.Projects) {
                 catalog.projects.values.filter(::active).sortedWith(byOrderKey).forEach { project ->
                     val id = project.string("id") ?: return@forEach
+                    val projectAt = rows.size
                     rows += AgentFeedRow.Folder(id, project.string("name").orEmpty(), 0, FolderMark.of(id, project))
                     fun series(owner: JsonObject, depth: Int) {
                         (owner["agents"] as? JsonArray).orEmpty().forEach { embedded ->
@@ -231,9 +260,12 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                         .filter { it.string("projectId") == id && it.string("id") != id && active(it) && it.string("id") !in owned }
                         .sortedWith(byOrderKey)
                         .forEach { workspace ->
+                            val workspaceAt = rows.size
                             rows += AgentFeedRow.Folder(workspace.string("id").orEmpty(), workspace.string("name").orEmpty(), 1)
                             series(workspace, 2)
+                            folderActivity(workspaceAt)
                         }
+                    folderActivity(projectAt)
                 }
             }
             return AgentFeed(loaded = true, rows = rows)

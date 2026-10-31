@@ -22,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,7 +47,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.conversation.Activity
@@ -63,6 +63,8 @@ import com.slopus.happy.ui.components.GlassBarLayout
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.components.MaterialSymbols
+import com.slopus.happy.ui.components.ShimmerSpec
+import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
@@ -88,6 +90,7 @@ object ConversationScreenTags {
     const val BAR = "conversation.bar"
     const val TITLE = "conversation.bar.title"
     const val SUBTITLE = "conversation.bar.subtitle"
+    const val STATUS = "conversation.bar.status"
     const val BACK = "conversation.bar.back"
     const val LIST = "conversation.list"
     const val LOADING = "conversation.loading"
@@ -220,24 +223,30 @@ fun ConversationScreen(
                         else -> SessionStatusColors.thinking
                     }
                     val style = MaterialTheme.typography.bodySmall
+                    // While work runs (not on a question) the title and the status shimmer, as desktop's busy
+                    // tab and working line do; both keep their colours, with the sheen wiping through.
+                    val running = activityShimmers(state.activity)
                     TitleWithStatus(
                         status = BarStatus(
                             connection ?: if (syncing) stringResource(R.string.status_syncing)
                             else working ?: stringResource(R.string.status_online),
                             dot,
                             connection == null && (syncing || state.activity != null),
+                            shimmer = connection == null && !syncing && running,
                         ),
                         statusStyle = style,
                         title = {
                             // An existing chat is never "New chat", not even before it's read: blank until then.
-                            Text(
+                            ShimmerText(
                                 state.title ?: when {
                                     !state.created -> stringResource(R.string.conversation_compose)
                                     state.loaded -> stringResource(R.string.conversation_untitled)
                                     else -> ""
                                 },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                style = LocalTextStyle.current,
+                                baseColor = colors.text,
+                                highlightColor = ShimmerSpec.sheen(colors.text, colors.surface),
+                                shimmering = running,
                                 modifier = Modifier.testTag(ConversationScreenTags.TITLE),
                             )
                         },
@@ -250,7 +259,14 @@ fun ConversationScreen(
                                 .semantics { liveRegion = LiveRegionMode.Polite },
                         ) {
                             status.dot?.let { StatusDot(it, pulsing = status.pulsing) }
-                            Text(status.text, style = style, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            ShimmerText(
+                                status.text,
+                                style = style,
+                                baseColor = colors.textSecondary,
+                                highlightColor = ShimmerSpec.sheen(colors.textSecondary, colors.surface),
+                                shimmering = status.shimmer,
+                                modifier = Modifier.testTag(ConversationScreenTags.STATUS),
+                            )
                         }
                     }
                 },
@@ -418,8 +434,15 @@ private fun Transcript(
 /** What the page under the bar shows. */
 private enum class TranscriptPhase { Loading, Failed, Empty, Rows }
 
-/** The bar's status line: its words, dot and whether the dot pulses. */
-private data class BarStatus(val text: String, val dot: Color?, val pulsing: Boolean)
+/** The bar's status line: its words, dot, whether the dot pulses and whether the words shimmer. */
+private data class BarStatus(val text: String, val dot: Color?, val pulsing: Boolean, val shimmer: Boolean = false)
+
+/**
+ * Whether the agent's work is running, so the bar's title and status
+ * shimmer: desktop's working line shimmers its phase while the loader
+ * spins, and not on a question waiting on the person.
+ */
+internal fun activityShimmers(activity: Activity?): Boolean = activity != null && activity != Activity.AwaitingAnswer
 
 /** What the agent is doing, as the bar's status line says it. */
 @Composable

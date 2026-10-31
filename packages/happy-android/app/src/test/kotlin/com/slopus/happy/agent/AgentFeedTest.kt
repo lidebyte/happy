@@ -287,4 +287,60 @@ class AgentFeedTest {
         // A todo inside a list changes nothing home shows.
         assertTrue(catalog(Wire.bootstrap()).apply(Wire.event("c2", "todo.created", buildJsonObject { put("surfaceId", "s9") })).stale.isEmpty())
     }
+
+    /** Desktop's `activity == "running"`: what shimmers a row's title on home. */
+    @Test
+    fun aConversationRunsWhileItWorksOutsideAQuestionOrAWait() {
+        val feed = AgentFeed.derive(
+            catalog(
+                Wire.bootstrap(
+                    bots = listOf(
+                        Wire.bot("b1", "Idle", Wire.agent("idle"), orderKey = "1"),
+                        Wire.bot("b2", "Busy", Wire.agent("busy", status = "thinking"), orderKey = "2"),
+                        Wire.bot("b3", "Asking", Wire.agent("asking", status = "running_tools", question = true), orderKey = "3"),
+                        Wire.bot("b4", "Waiting", Wire.agent("waiting", status = "working", wait = true), orderKey = "4"),
+                        // Idle itself, but its subtask works: the work it handed off is its own.
+                        Wire.bot(
+                            "b5", "Delegating",
+                            Wire.agent("parent", subtasks = listOf(Wire.agent("child", status = "working", subtask = true, parent = "parent"))),
+                            orderKey = "5",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val rows = feed.conversations.associateBy { it.agentId }
+        assertFalse(rows.getValue("idle").running)
+        assertTrue(rows.getValue("busy").running)
+        assertFalse("a question outranks the work", rows.getValue("asking").running)
+        assertFalse("a scheduled wait is still", rows.getValue("waiting").running)
+        assertTrue(rows.getValue("waiting").working)
+        assertTrue(rows.getValue("child").running)
+        assertTrue(rows.getValue("parent").delegating)
+        assertTrue(rows.getValue("parent").running)
+    }
+
+    @Test
+    fun aFolderRunsWhileAConversationInItRunsAndNoneAsks() {
+        fun folders(vararg projectAgents: kotlinx.serialization.json.JsonObject, worktree: List<kotlinx.serialization.json.JsonObject> = emptyList()) =
+            AgentFeed.derive(
+                catalog(
+                    Wire.bootstrap(
+                        projects = listOf(Wire.project("p1", "rig", projectAgents.toList())),
+                        workspaces = listOf(Wire.workspace("w1", "p1", "fix", worktree)),
+                    ),
+                ),
+            ).rows.filterIsInstance<AgentFeedRow.Folder>().associate { it.id to it.running }
+
+        assertEquals(mapOf("p1" to false, "w1" to false), folders(Wire.agent("a"), worktree = listOf(Wire.agent("b"))))
+        // The project's own chat works: the project shimmers, its idle worktree doesn't.
+        assertEquals(mapOf("p1" to true, "w1" to false), folders(Wire.agent("a", status = "working"), worktree = listOf(Wire.agent("b"))))
+        // Work in a worktree runs in its project too.
+        assertEquals(mapOf("p1" to true, "w1" to true), folders(Wire.agent("a"), worktree = listOf(Wire.agent("b", status = "thinking"))))
+        // A question anywhere under it stills the folder, as desktop's awaitingInput outranks running.
+        assertEquals(
+            mapOf("p1" to false, "w1" to false),
+            folders(Wire.agent("a", status = "working"), worktree = listOf(Wire.agent("b", question = true))),
+        )
+    }
 }

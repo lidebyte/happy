@@ -79,7 +79,7 @@ final class ChatHeaderHarness {
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             window.rootViewController = navigation
             window.layoutIfNeeded()
-            let chat = ChatViewController(session: session, agentId: "chat-header", title: title, spaceId: nil, seedling: nil)
+            let chat = ChatViewController(session: session, agentId: "chat-header", title: title, spaceId: nil, intro: nil)
             navigation.pushViewController(chat, animated: false)
             window.layoutIfNeeded()
             // The offline conversation's own empty plan lands first.

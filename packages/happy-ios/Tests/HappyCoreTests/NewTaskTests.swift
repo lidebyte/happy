@@ -96,6 +96,38 @@ final class NewTaskTests: XCTestCase {
         await chat.stop()
     }
 
+    /// Bot, named: the first message makes a bot under that name, then
+    /// goes into it. A task given only spaces is made unnamed.
+    func testTheChoiceMakesABotOrATaskAsNamed() async throws {
+        let computer = TaskComputer()
+        let store = Store(client: AgentClient(transport: computer, token: "t"))
+        let bot = await store.newTask()
+        bot.choice = NewTask.Choice(kind: .bot, name: "Newsletter")
+        let (chat, _) = conversation(computer, bot)
+        await chat.start()
+        let sent = await chat.send(id: "m1", text: "Draft the newsletter")
+        XCTAssertTrue(sent)
+        var writes = await computer.writes
+        for _ in 0..<100 where !writes.contains(where: { $0.path.hasSuffix("/send") }) {
+            try await Task.sleep(for: .milliseconds(20))
+            writes = await computer.writes
+        }
+        XCTAssertEqual(writes.map(\.path), ["/v0/bots", "/v0/agents/\(bot.agentId)/send"])
+        XCTAssertEqual(writes.first?.body?["name"]?.stringValue, "Newsletter")
+        XCTAssertEqual(writes.first?.body?["agentId"]?.stringValue, bot.agentId)
+        XCTAssertEqual(writes.first?.body?["workspaceId"]?.stringValue, bot.identity.workspaceId)
+        await chat.stop()
+
+        let task = await store.newTask()
+        XCTAssertFalse(task === bot)
+        XCTAssertEqual(task.choice.kind, .task, "the next new work kept the last one's kind")
+        task.choice = NewTask.Choice(kind: .task, name: "   ")
+        _ = try await task.make()
+        let creates = await computer.writes.filter { $0.path == "/v0/tasks" }
+        XCTAssertEqual(creates.count, 1)
+        XCTAssertNil(creates.first?.body?["name"], "a blank name was sent")
+    }
+
     /// A refused make draws nothing and sends nothing, says why, and the
     /// next send asks again under the same names.
     func testARefusedMakeDrawsNothingAndTriesAgainUnderTheSameNames() async throws {
@@ -171,6 +203,9 @@ private actor TaskComputer: AgentTransport {
                 "task": .object(["id": body?["id"] ?? .null, "name": .string("New Task"), "agent": .object(["id": agentId, "workspaceId": body?["workspaceId"] ?? .null])]),
                 "membership": .object(["taskId": body?["id"] ?? .null]),
             ]))
+        case ("POST", "/v0/bots"):
+            let agentId = body?["agentId"] ?? .string("given")
+            return try json(.object(["bot": .object(["name": body?["name"] ?? .string("New Bot"), "agent": .object(["id": agentId, "workspaceId": body?["workspaceId"] ?? .null])])]), status: 201)
         case (_, let route) where route.hasSuffix("/messages"):
             return try json(.object(["runs": .array([]), "hasMore": .bool(false)]))
         case (_, let route) where route.hasSuffix("/bootstrap"):

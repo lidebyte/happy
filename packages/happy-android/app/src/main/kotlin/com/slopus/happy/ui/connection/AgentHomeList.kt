@@ -58,6 +58,7 @@ import com.slopus.happy.ui.components.HomeCardTags
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RemoteImage
+import com.slopus.happy.ui.components.ShimmerSpec
 import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
@@ -309,7 +310,7 @@ fun LazyListScope.agentHomeRows(
             )
             is AgentHomeItem.Row -> CardRow(item, motion) {
                 when (val row = item.row) {
-                    is AgentFeedRow.Conversation -> ConversationRow(row, reduceMotion, onOpen)
+                    is AgentFeedRow.Conversation -> ConversationRow(row, onOpen)
                     is AgentFeedRow.Folder -> FolderRow(row)
                     AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.agent_home_artifacts), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
                     is AgentFeedRow.Surface -> RowTile.surface(row.type).let { (glyph, tile) ->
@@ -347,11 +348,12 @@ private fun titleStart(row: AgentFeedRow): Dp {
 
 /**
  * One conversation, on one line: a bot's or task's 30 mark, the title 17/22
- * (shimmering while it works), and a 10 dot 12 after it while it waits or
- * is unread. No time. The whole row opens it.
+ * (desktop's sheen while it runs, [AgentFeedRow.Conversation.running]),
+ * and a 10 dot 12 after it while it waits or is unread. No time. The whole
+ * row opens it.
  */
 @Composable
-private fun ConversationRow(row: AgentFeedRow.Conversation, reduceMotion: Boolean, onOpen: (String) -> Unit) {
+private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> Unit) {
     val colors = HappyTheme.colors
     val marked = AgentHomeSpec.hasMark(row.kind)
     val title = row.title ?: stringResource(R.string.session_new_chat)
@@ -373,18 +375,14 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, reduceMotion: Boolea
                 .weight(1f)
                 .testTag(AgentHomeTags.ROW_TITLE),
         ) {
-            if (row.working && !reduceMotion) {
-                ShimmerText(text = title, style = AgentHomeSpec.title, baseColor = colors.textSecondary, highlightColor = colors.text)
-            } else {
-                Text(
-                    title,
-                    style = AgentHomeSpec.title,
-                    color = colors.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.wrapContentHeight(unbounded = true),
-                )
-            }
+            ShimmerText(
+                text = title,
+                style = AgentHomeSpec.title,
+                baseColor = colors.text,
+                highlightColor = ShimmerSpec.sheen(colors.text, colors.surfaceHigh),
+                shimmering = row.running,
+                modifier = Modifier.wrapContentHeight(unbounded = true),
+            )
         }
         Corner(row.blocked, row.unread)
     }
@@ -416,9 +414,13 @@ private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () ->
     }
 }
 
-/** A project or a worktree: its name, and a project's mark before it ([FolderMarkView]). It opens nothing. */
+/**
+ * A project or a worktree: its name, shimmering while work runs inside it,
+ * and a project's mark before it ([FolderMarkView]). It opens nothing.
+ */
 @Composable
 private fun FolderRow(row: AgentFeedRow.Folder) {
+    val colors = HappyTheme.colors
     val mark = row.mark
     Row(
         modifier = Modifier
@@ -430,18 +432,21 @@ private fun FolderRow(row: AgentFeedRow.Folder) {
         if (mark != null) {
             Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { FolderMarkView(mark, AgentHomeSpec.mark) }
         }
-        Text(
-            row.name,
-            style = AgentHomeSpec.title,
-            color = HappyTheme.colors.text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Box(
             modifier = Modifier
                 .padding(start = if (mark != null) AgentHomeSpec.markGap else 0.dp)
                 .weight(1f)
-                .wrapContentHeight(unbounded = true)
                 .testTag(AgentHomeTags.ROW_TITLE),
-        )
+        ) {
+            ShimmerText(
+                text = row.name,
+                style = AgentHomeSpec.title,
+                baseColor = colors.text,
+                highlightColor = ShimmerSpec.sheen(colors.text, colors.surfaceHigh),
+                shimmering = row.running,
+                modifier = Modifier.wrapContentHeight(unbounded = true),
+            )
+        }
     }
 }
 

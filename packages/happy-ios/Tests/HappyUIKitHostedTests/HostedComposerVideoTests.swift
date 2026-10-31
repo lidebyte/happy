@@ -47,7 +47,7 @@ final class HostedComposerVideoTests: XCTestCase {
         }
         let context = AppContext(account: account, variant: .preview, version: "test")
         let session = try XCTUnwrap(Session.session(for: computer.id, context: context))
-        let chat = ChatViewController(session: session, agentId: "video-test", title: "Video attachment", spaceId: nil, seedling: nil)
+        let chat = ChatViewController(session: session, agentId: "video-test", title: "Video attachment", spaceId: nil, intro: nil)
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: chat)
         defer { window.isHidden = true }
         window.layoutIfNeeded()

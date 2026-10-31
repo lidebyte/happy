@@ -214,7 +214,7 @@ final class HostedBrowserTests: XCTestCase {
             from: Data(#"{"address":"browser-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"native-secret"}"#.utf8)), name: "Studio Mac")
         let context = AppContext(account: account, variant: .preview, version: "test")
         let session = try XCTUnwrap(Session.session(for: connection.id, context: context))
-        let chat = ChatViewController(session: session, agentId: "agent1", title: "Preview", spaceId: nil, seedling: nil, previewing: true)
+        let chat = ChatViewController(session: session, agentId: "agent1", title: "Preview", spaceId: nil, intro: nil, previewing: true)
         let navigation = UINavigationController(rootViewController: chat)
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: navigation)
         defer {

@@ -58,6 +58,7 @@ import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.ShimmerSpec
 import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.layout.LocalWindowLayout
@@ -210,11 +211,13 @@ private fun RowScope.AvatarLane(content: @Composable BoxScope.() -> Unit) {
 private fun RowScope.RowName(text: String, working: Boolean, style: TextStyle) {
     val colors = HappyTheme.colors
     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-        if (working) {
-            ShimmerText(text = text, style = style, baseColor = colors.textSecondary, highlightColor = colors.text)
-        } else {
-            Text(text = text, style = style, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+        ShimmerText(
+            text = text,
+            style = style,
+            baseColor = colors.text,
+            highlightColor = ShimmerSpec.sheen(colors.text, colors.grouped.background),
+            shimmering = working,
+        )
     }
 }
 

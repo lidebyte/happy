@@ -52,6 +52,7 @@ import com.slopus.happy.ui.components.AvatarBadgeLocation
 import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.ShimmerSpec
 import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.hairline
@@ -235,18 +236,21 @@ fun FlatSessionRow(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.weight(1f).testTag(FlatRowTags.TITLE)) {
-                        if (presentation.shimmerTitle) {
-                            ShimmerText(text = name, style = FlatRowSpec.title, baseColor = colors.textSecondary, highlightColor = colors.text)
-                        } else {
-                            Text(
-                                text = name,
-                                style = FlatRowSpec.title,
-                                color = if (faded) colors.textSecondary else colors.text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.wrapContentHeight(unbounded = carded),
-                            )
+                        val ink = if (faded) colors.textSecondary else colors.text
+                        // A carded row's ground is its card's.
+                        val ground = when {
+                            selected -> colors.surfaceSelected
+                            carded -> colors.surfaceHigh
+                            else -> flatListBackground(colors)
                         }
+                        ShimmerText(
+                            text = name,
+                            style = FlatRowSpec.title,
+                            baseColor = ink,
+                            highlightColor = ShimmerSpec.sheen(ink, ground),
+                            shimmering = presentation.shimmerTitle,
+                            modifier = Modifier.wrapContentHeight(unbounded = carded),
+                        )
                     }
                     TopRight(presentation.topRight, session.state, if (carded) HomeCardSpec.dot else FlatRowSpec.topRightDot)
                 }

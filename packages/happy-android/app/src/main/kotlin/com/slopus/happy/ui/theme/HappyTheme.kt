@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.slopus.happy.ui.components.ProvideShimmerClock
 
 /** Spacing, radius and icon scales shared by both themes (theme.ts `sharedSpacing`). */
 @Immutable
@@ -76,12 +77,15 @@ fun HappyTheme(
     val colors = if (dark) DarkColors else LightColors
     val scheme = happyColorScheme(colors)
     CompositionLocalProvider(LocalHappyColors provides colors) {
-        MaterialTheme(colorScheme = scheme, shapes = HappyShapes, typography = HappyMaterialType) {
-            // Selection handles and highlight in the link blue, as iOS's tint, not Material's primary.
-            CompositionLocalProvider(
-                LocalTextSelectionColors provides TextSelectionColors(colors.textLink, colors.textLink.copy(alpha = 0.3f)),
-                content = content,
-            )
+        // One clock for every shimmer under the theme: a screen of working rows is one frame loop.
+        ProvideShimmerClock {
+            MaterialTheme(colorScheme = scheme, shapes = HappyShapes, typography = HappyMaterialType) {
+                // Selection handles and highlight in the link blue, as iOS's tint, not Material's primary.
+                CompositionLocalProvider(
+                    LocalTextSelectionColors provides TextSelectionColors(colors.textLink, colors.textLink.copy(alpha = 0.3f)),
+                    content = content,
+                )
+            }
         }
     }
 }

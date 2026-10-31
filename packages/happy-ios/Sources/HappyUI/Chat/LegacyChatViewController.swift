@@ -122,10 +122,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// A `compose-chat:` screen's start (`LegacyComposeStart`), until its
     /// first send has made the session; nil on any other chat.
     private var composing: LegacyComposeStart?
-    /// Where a compose chat's first send goes, over its empty list: a
-    /// machine and a folder, picked from a menu.
-    private lazy var composeTarget = UIButton(configuration: .gray())
-    /// A compose chat brings the keyboard up once its composer shows.
+    /// Where a compose chat's first send goes, centred over its empty list
+    /// as Happy Agent's new work asks Task or Bot: the machine (with more
+    /// than one) and the folder, each picked from a menu.
+    private lazy var composeTarget = NewWorkPanel(mode: .session)
+    /// A compose chat brings the keyboard up as it is pushed.
     private var composeFocusOwed = false
     private var anchorMetadata: JSONValue?
     private var anchorRecord: SessionRecord?
@@ -320,14 +321,12 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         placeholder.onAction = { [weak self] in self?.placeholderAction() }
         view.addSubview(placeholder)
         if let compose = composing {
-            composeTarget.configuration?.cornerStyle = .capsule
-            composeTarget.configuration?.image = .icon(.ionicons("desktop-outline"), size: 16)
-            composeTarget.configuration?.imagePadding = 6
-            composeTarget.configuration?.titleLineBreakMode = .byTruncatingMiddle
-            composeTarget.menu = compose.targetMenu()
-            composeTarget.showsMenuAsPrimaryAction = true
-            composeTarget.accessibilityIdentifier = "compose-target"
+            composeTarget.machine.menu = compose.machineMenu()
+            composeTarget.folder.menu = compose.folderMenu()
             view.addSubview(composeTarget)
+            #if DEBUG
+            if ComposeTrace.isOn { composeTrace = ComposeTrace(self) }
+            #endif
             updateComposeTarget()
         }
     }
@@ -477,6 +476,12 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         super.viewWillAppear(animated)
         appeared = true
         startConstruction()
+        // An empty compose has no transcript to stage: built now, its
+        // composer can take the keyboard while the push still runs.
+        if isComposing { construction?.finish() }
+        #if DEBUG
+        composeTrace?.event("willAppear built=\(construction?.stageSeconds.map { String(format: "%.3f", $0) } ?? [])")
+        #endif
         // A store write: never on the main thread.
         let actions = account.actions
         let chatId = self.chatId
@@ -500,8 +505,21 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         historyPager?.isActive = true
     }
 
+    /// In the window, the push still to run: a compose chat's composer
+    /// takes the keyboard now, so it comes up with the push.
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        #if DEBUG
+        composeTrace?.event("isAppearing restored=\(composer.isRestored)")
+        #endif
+        takeComposeFocus()
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        #if DEBUG
+        composeTrace?.appeared()
+        #endif
         // In its window now, which a later layout may not follow.
         ultraKeyboard?.refresh()
         VoiceCoordinator.shared.focus(account: account, sessionId: chatId)
@@ -541,6 +559,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             // Gone before the machine answered: the start stops, and what
             // was typed stays in the draft for the next compose.
             composing?.cancel()
+            #if DEBUG
+            composeTrace?.stop()
+            #endif
         }
         guard parent == nil, let chat = pendingChat, chat.sessionId != nil || chat.status == .failed else { return }
         let chats = services.pendingChats
@@ -811,11 +832,13 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // an empty chat sits between the bar and the dock.
         placeholder.setLayoutFrame(dock.isHidden ? view.bounds : screen.placeholder)
         if composing != nil {
+            // Centred between the bar and the dock, which rides the
+            // keyboard: the panel moves with it, in the same pass.
             let area = screen.placeholder
-            let room = max(0, area.width - 48)
-            let fits = composeTarget.sizeThatFits(CGSize(width: room, height: 44))
-            let width = min(fits.width, room)
-            composeTarget.frame = CGRect(x: area.midX - width / 2, y: area.midY - fits.height / 2, width: width, height: fits.height).integral
+            composeRoom = area
+            let layout = composeTarget.layout(width: size.width, top: area.minY, bottom: area.maxY)
+            composeTarget.place(layout)
+            composeTarget.isHidden = !layout.fits
         }
         header.maxWidth = ChatTitleLayout.maxWidth(barWidth: size.width)
         plainTitleView.maxWidth = ContentWidth.headerMaxWidth
@@ -1320,6 +1343,15 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     // MARK: Compose
 
+    /// The start behind an empty chat compose opened, for the tests.
+    var composeStart: LegacyComposeStart? { composing }
+    #if DEBUG
+    /// `HAPPY_COMPOSE_TRACE`: the empty chat's frames, as new work's.
+    private var composeTrace: ComposeTrace?
+    #endif
+    /// Where the empty chat's panel is centred: under the bar, over the dock.
+    private var composeRoom: CGRect = .zero
+
     /// An empty chat compose opened, with no session yet.
     var isComposing: Bool {
         composing != nil && ComposeChat.isComposeId(chatId)
@@ -1346,18 +1378,24 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// target is fixed, and once the chat is real it goes.
     private func updateComposeTarget() {
         guard let compose = composing else { return }
-        composeTarget.isHidden = !isComposing
-        composeTarget.isEnabled = !compose.isStarting
-        composeTarget.configuration?.title = compose.target
-        composeTarget.accessibilityLabel = compose.target
+        if !isComposing { composeTarget.isHidden = true }
+        composeTarget.isLocked = compose.isStarting
+        composeTarget.showsMachine = compose.asksMachine
+        composeTarget.machine.title = compose.machineName
+        composeTarget.folder.title = compose.folderName
         view.setNeedsLayout()
     }
 
-    /// The keyboard a compose chat opens with, once its composer shows.
+    /// The keyboard a compose chat opens with, as soon as it is in the
+    /// window: the composer shows at once rather than wait for its draft
+    /// to be measured (`focus`), so the keyboard comes up with the push.
     private func takeComposeFocus() {
-        guard composeFocusOwed, isComposing, contentInstalled, composer.isRestored, view.window != nil else { return }
+        guard composeFocusOwed, isComposing, contentInstalled, view.window != nil else { return }
         composeFocusOwed = false
         composer.focus()
+        #if DEBUG
+        composeTrace?.event("focus \(traceResponder)")
+        #endif
     }
 
     /// The session the first send started: the screen becomes its chat in
@@ -1367,7 +1405,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         becomeChat(real)
         composing?.cancel()
         composing = nil
-        composeTarget.isHidden = true
+        composeTarget.dismiss()
         updateHeader()
         updatePlaceholder()
         list.scrollToNewest(animated: true)
@@ -2094,4 +2132,19 @@ final class ChatScrollButton: UIControl {
         layer.shadowColor = UIColor(Palette.shadow).resolvedColor(with: traitCollection).cgColor
     }
 }
+#if DEBUG
+extension LegacyChatViewController: ComposeTraced {
+    var traceResponder: String {
+        func card(_ view: UIView) -> AgentInputCardView? {
+            if let card = view as? AgentInputCardView { return card }
+            return view.subviews.lazy.compactMap(card).first
+        }
+        guard contentInstalled, let card = card(composer) else { return "none" }
+        return card.textView.isFirstResponder ? "composer" : "none"
+    }
+    var traceComposer: UIView? { contentInstalled ? composer : nil }
+    var tracePanel: UIView? { isComposing ? composeTarget : nil }
+    var traceRoom: (top: CGFloat, bottom: CGFloat) { (composeRoom.minY, composeRoom.maxY) }
+}
+#endif
 #endif

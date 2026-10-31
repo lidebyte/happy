@@ -303,11 +303,10 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
             // to the accounts at all.
             navigationItem.leftBarButtonItem = switcher?.barItem
             let items: [HeaderBar.Trailing: UIBarButtonItem] = [.filter: filterItem, .settings: settingsItem]
-            if canCompose, let host = self as UIViewController as? ComposeHosting {
-                let compose = composeItem(host)
-                compose.sharesBackground = false
-                toolbarItems = [.flexibleSpace(), compose]
-            } else { toolbarItems = nil }
+            // The same items each time: a button rebuilt under a finger
+            // drops its tap, and home updates with every connection change.
+            let toolbar = canCompose ? composeItems : nil
+            if toolbarItems != toolbar { toolbarItems = toolbar }
             navigationItem.rightBarButtonItems = blank ? nil : HeaderBar.trailing(items)
             if navigationController?.topViewController === self { HomeToolbar.show(for: self, animated: animated) }
         }
@@ -357,9 +356,11 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
 
     private lazy var settingsItem = HeaderBar.settingsItem { [weak self] in self?.openSettings() }
 
-    private func composeItem(_ host: ComposeHosting) -> UIBarButtonItem {
-        HeaderBar.composeItem { [weak host] in host?.compose() }
-    }
+    private lazy var composeItems: [UIBarButtonItem] = {
+        let item = HeaderBar.composeItem { [weak self] in self?.compose() }
+        item.sharesBackground = false
+        return [.flexibleSpace(), item]
+    }()
 
     private lazy var filterItem: UIBarButtonItem = {
         let item = UIBarButtonItem(image: .icon(.ionicons("filter"), size: 22), menu: filterMenu())

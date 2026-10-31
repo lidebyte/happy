@@ -17,7 +17,7 @@ enum StoriesViewerPresenter {
         viewer.onOpenConversation = { [weak host] source in
             guard let host, let v2 = session.v2, let navigation = host.navigationController ?? host as? UINavigationController else { return }
             let title = v2.snapshot.rows.first { $0.agentId == source.agentId }?.label ?? Strings.untitledSession
-            let chat = ChatViewController(session: v2, agentId: source.agentId, title: title, spaceId: nil, seedling: nil)
+            let chat = ChatViewController(session: v2, agentId: source.agentId, title: title, spaceId: nil, intro: nil)
             navigation.pushViewController(chat, animated: true)
         }
         StoriesHaptics.play(.open)

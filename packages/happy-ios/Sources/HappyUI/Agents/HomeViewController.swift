@@ -453,7 +453,7 @@ final class HomeViewController: UIViewController {
             sidebar.selectedRowId = row.id
             session.warm.tap(agentId)
             let space = row.spaceId.flatMap { id in snapshotSpace(id) }
-            let chat = ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, seedling: space)
+            let chat = ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, intro: space)
             navigationController?.pushViewController(chat, animated: animated)
         default:
             break
@@ -466,7 +466,7 @@ final class HomeViewController: UIViewController {
     private func preview(for row: Row) -> UIViewController? {
         guard let session, row.kind == .space || row.kind == .session, row.targetKind != "surface", let agentId = row.agentId else { return nil }
         let space = row.spaceId.flatMap { id in snapshotSpace(id) }
-        let chat = ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, seedling: space, previewing: true)
+        let chat = ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, intro: space, previewing: true)
         let window = view.window
         let screen = window?.bounds.size ?? view.bounds.size
         let insets = window?.safeAreaInsets ?? view.safeAreaInsets
@@ -476,7 +476,6 @@ final class HomeViewController: UIViewController {
 
     private func snapshotSpace(_ spaceId: String) -> ChatViewController.Intro? {
         guard let row = snapshot.rows.first(where: { $0.spaceId == spaceId }) else { return nil }
-        if case .seedling(let seed) = row.mark { return .seedling(seed: seed) }
         if case .clay(let slug) = row.mark { return .clay(slug) }
         return nil
     }

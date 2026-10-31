@@ -24,7 +24,7 @@ enum ChiefOfStaffAsk {
             agentId: agentId,
             title: row?.label ?? Strings.Start.logo,
             spaceId: row?.spaceId,
-            seedling: nil,
+            intro: nil,
             prefill: ask
         )
     }

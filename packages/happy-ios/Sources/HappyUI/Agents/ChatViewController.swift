@@ -7,13 +7,15 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// One V2 conversation, simplified from desktop's: the work's
-/// intro at the top (its seedling, or the clay icon it grew into, over
+/// intro at the top (the clay icon it was given, over
 /// "Say what it is — it’ll find its place."), what the person wrote and
 /// what the agent said with the pictures and recordings it presented, and
 /// a composer that sends photos too. Tool calls are never shown.
 ///
-/// New work opens here before the daemon has made it: the intro and the
-/// composer are up at once, and a first message waits for the work to exist.
+/// New work opens here before the daemon has made it: what it will be (Task
+/// or Bot, and a name) in the middle (`NewWorkPanel`) and the composer with
+/// the keyboard, up as the screen comes in; a first message makes it and
+/// waits for it to exist.
 ///
 /// Previewing, it is what a hold on the row shows over the sidebar, as
 /// Telegram previews a chat: the newest messages under the name in a
@@ -70,6 +72,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private let ultra: AgentChatUltraList?
     private lazy var transcriptHeaderScrim = HeaderScrimView()
     private let introView = IntroView()
+    /// New work's Task or Bot and name, until its first message shows.
+    private let newWorkPanel: NewWorkPanel?
+    /// The panel has gone, or is going, for good.
+    private var newWorkPanelGone = false
     /// The rows near the screen, the only ones that are views
     /// (`ChatMountedRows`), by plan id.
     private var rowViews: [String: ChatPlanView] = [:]
@@ -176,6 +182,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var scrollHold = ChatScrollHold()
     #if DEBUG
     private var probe: ScrollProbe?
+    private var composeTrace: ComposeTrace?
     #endif
     /// The computer was reachable when last heard: pictures that failed
     /// while it wasn't are asked for again when it is back.
@@ -186,7 +193,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private let header = ChatHeaderView()
     private var titleView: ChatTitleView { header.titleView }
 
-    init(session: Session, agentId: String, title: String, spaceId: String?, seedling intro: Intro?, newTask: NewTask? = nil, prefill: ChatPrefill? = nil, previewing: Bool = false) {
+    init(session: Session, agentId: String, title: String, spaceId: String?, intro: Intro?, newTask: NewTask? = nil, prefill: ChatPrefill? = nil, previewing: Bool = false) {
         self.session = session
         self.spaceId = spaceId
         self.intro = intro
@@ -194,6 +201,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         self.prefill = previewing ? nil : prefill
         ultra = previewing || session.localSettings.chatListRenderer == .collectionView ? nil : AgentChatUltraList()
         self.newTask = newTask
+        newWorkPanel = newTask == nil || previewing ? nil : NewWorkPanel(mode: .work)
         opensFocused = newTask != nil
         // An ask typed in for the person brings the keyboard up too, so
         // they only have to finish the sentence.
@@ -278,8 +286,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         navigationItem.rightBarButtonItems = HeaderBar.trailing([
             .compose: HeaderBar.composeItem { [weak self] in self?.compose() },
         ])
-        // New work asks what it is; a conversation already going asks for the next message.
-        if case .seedling = intro { card.configuration.placeholder = Strings.composerPlaceholder }
         card.configuration.showsAdd = true
         card.configuration.showsExpand = true
         card.configuration.addAccessibilityLabel = Strings.addPicture
@@ -295,6 +301,12 @@ final class ChatViewController: UIViewController, ComposeHosting {
                 AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL, name: $0.attachment.name, mimeType: $0.attachment.mimeType)
             }
             updatePrimary()
+        }
+        if let newWorkPanel, let newTask {
+            newWorkPanel.choice = newTask.choice
+            newWorkPanel.onChange = { [newTask] choice in newTask.choice = choice }
+            newWorkPanel.onReturn = { [weak self] in self?.card.focus() }
+            view.addSubview(newWorkPanel)
         }
         view.addSubview(composerScrim)
         jump.isHidden = true
@@ -327,6 +339,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         if previewing { setUpPreview() }
         #if DEBUG
         if !previewing, let mode = ProcessInfo.processInfo.environment["HAPPY_CHAT_PROBE"] { probe = ScrollProbe(self, relayout: mode == "relayout") }
+        if !previewing, newTask != nil, ComposeTrace.isOn { composeTrace = ComposeTrace(self) }
         #endif
         applyIntro()
         proposals.onChange = { [weak self] in self?.replan() }
@@ -366,10 +379,13 @@ final class ChatViewController: UIViewController, ComposeHosting {
         super.viewWillAppear(animated)
         // A preview is only looked at: what it shows stays unread.
         if previewing { return }
+        #if DEBUG
+        composeTrace?.event("willAppear window=\(view.window != nil)")
+        #endif
         // What the keyboard did while another screen was over this one
         // went unheard: down, unless it is still this composer's.
         fingerOnKeyboard = false
-        if !card.textView.isFirstResponder { keyboardTop = .greatestFiniteMagnitude }
+        if !ownsKeyboard { keyboardTop = .greatestFiniteMagnitude }
         // Back from a screen over this one, or a swipe back let go of.
         updateBar(animated: animated)
         let conversation = conversation
@@ -378,11 +394,25 @@ final class ChatViewController: UIViewController, ComposeHosting {
         tellReadsNewest(moving: false)
     }
 
+    /// In the window as the push starts: new work's keyboard comes up now,
+    /// with the push, as Messages' compose does, not after it.
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        if previewing { return }
+        #if DEBUG
+        composeTrace?.event("isAppearing window=\(view.window != nil)")
+        #endif
+        takeOpeningFocus()
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        #if DEBUG
+        composeTrace?.appeared()
+        #endif
         guard !previewing, let navigationController else { return }
         _ = navigationController
-        // New work: the keyboard comes up with the screen, if nothing asked yet.
+        // New work: the keyboard comes up now if it couldn't with the push.
         takeOpeningFocus()
     }
 
@@ -390,6 +420,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         super.viewWillDisappear(animated)
         #if DEBUG
         probe?.observePop()
+        composeTrace?.event("willDisappear interactive=\(transitionCoordinator?.isInteractive == true)")
         #endif
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
@@ -403,6 +434,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        #if DEBUG
+        composeTrace?.event("didDisappear")
+        if isMovingFromParent || navigationController == nil { composeTrace?.stop() }
+        #endif
         let conversation = conversation
         Task { await conversation.setVisible(false) }
         if isMovingFromParent || navigationController == nil {
@@ -452,7 +487,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     private func endKeyboardDrag() {
         // A drag that never moved the keyboard receives no frame notification.
-        if !card.textView.isFirstResponder || abs(keyboardTracker.frame.minY - min(keyboardTop, view.bounds.maxY)) < 1 {
+        if !ownsKeyboard || abs(keyboardTracker.frame.minY - min(keyboardTop, view.bounds.maxY)) < 1 {
             fingerOnKeyboard = false
         }
     }
@@ -536,12 +571,44 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     // MARK: New work
 
-    /// The keyboard new work opens with: asked for once, as the screen comes in.
+    /// The keyboard new work opens with: asked for once, as the screen comes
+    /// in. The composer takes it, as desktop's does; the name is a tap away.
+    /// Off screen still, it waits for the screen.
     func takeOpeningFocus() {
-        guard focusPending else { return }
+        guard focusPending, view.window != nil else { return }
         focusPending = false
         guard focusesOnOpen else { return }
         card.focus()
+        #if DEBUG
+        composeTrace?.event("focus composer=\(card.textView.isFirstResponder)")
+        #endif
+    }
+
+    /// The keyboard is this screen's: the composer's or the name's.
+    private var ownsKeyboard: Bool {
+        card.textView.isFirstResponder || newWorkPanel?.name.isFirstResponder == true
+    }
+
+    /// The panel centred between the bar's foot and the card's top, so it
+    /// moves with the card, in the same animation, as the keyboard comes
+    /// and goes.
+    private func layoutNewWorkPanel(above card: CGRect) {
+        guard let newWorkPanel, !newWorkPanelGone else { return }
+        let layout = newWorkPanel.layout(width: view.bounds.width, top: view.safeAreaInsets.top, bottom: card.minY)
+        newWorkPanel.place(layout)
+        newWorkPanel.isHidden = !layout.fits
+    }
+
+    /// The first message is in: the panel fades, and the conversation is
+    /// an ordinary one. The keyboard, wherever it was, stays up in the
+    /// composer.
+    private func dismissNewWorkPanel() {
+        guard let newWorkPanel, !newWorkPanelGone else { return }
+        newWorkPanelGone = true
+        // The composer takes the keyboard before the name is shut, so it
+        // never goes down in between.
+        if newWorkPanel.name.isFirstResponder { card.focus() }
+        newWorkPanel.dismiss()
     }
 
     /// Nothing typed or picked.
@@ -573,7 +640,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     // MARK: State
 
     /// The row's name and mark as the sidebar has them: Prioritizing's name
-    /// lands here too, and the seedling gives way to its clay icon.
+    /// lands here too, and so does the clay icon it chose.
     private func follow(_ snapshot: Snapshot) {
         if snapshot.live, !live {
             media.retryFailed()
@@ -595,7 +662,6 @@ final class ChatViewController: UIViewController, ComposeHosting {
         rowName = (row.label, row.titled)
         applyTitle()
         let next: Intro? = switch row.mark {
-        case .seedling(let seed): .seedling(seed: seed)
         case .clay(let slug): .clay(slug)
         default: intro
         }
@@ -670,6 +736,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         updateHeaderStatus()
         if wasSettled != settled(snapshot), let intro { introView.configure(intro, settled: settled(snapshot)) }
         showIntro()
+        if !snapshot.items.isEmpty { dismissNewWorkPanel() }
         updatePrimary()
         updateChips()
         replan()
@@ -1136,6 +1203,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
         ) { [card] width in card.height(fitting: width) }
         transcriptHeaderScrim.setLayoutFrame(screen.headerScrim)
         card.setLayoutFrame(screen.card)
+        layoutNewWorkPanel(above: screen.card)
         picker?.follow()
         let foot = ChatFootLayout(size: view.bounds.size, card: screen.card)
         composerScrim.setLayoutFrame(foot.scrim)
@@ -1495,10 +1563,17 @@ final class ChatViewController: UIViewController, ComposeHosting {
         let conversation = conversation
         let store = session.store
         let staged = pictures
+        let kind = newTask?.choice.kind ?? .task
+        #if DEBUG
+        composeTrace?.event("send choice=\(String(describing: newTask?.choice))")
+        #endif
+        if newWorkPanel?.name.isFirstResponder == true { card.focus() }
+        newWorkPanel?.isLocked = true
         Task {
             await store.attentionInput()
             let accepted = await conversation.send(id: id, text: text, attachments: picked)
             acceptingSend = false
+            if !accepted, !newWorkPanelGone { newWorkPanel?.isLocked = false }
             if accepted {
                 if card.text.trimmingCharacters(in: .whitespacesAndNewlines) == text {
                     card.setText("", selection: NSRange(location: 0, length: 0))
@@ -1506,7 +1581,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
                 staged.removeSent(pickedIDs)
             } else {
                 let refusal = await conversation.sendRefusal
-                let message = refusal.map(Strings.newTaskFailed) ?? "The message could not be saved. Your text and attachments are still here."
+                let message = refusal.map { Strings.newWorkFailed(kind, $0) } ?? "The message could not be saved. Your text and attachments are still here."
                 let alert = UIAlertController(title: Strings.Common.error, message: message, preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
                 present(alert, animated: true)
@@ -1640,12 +1715,11 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // A bot's or task's own conversation opens as its row opens it: renamed in its bar, its mark in the intro.
         let row = sidebarRows.first { $0.kind == .space && $0.agentId == entity.agentId }
         let intro: Intro? = switch row?.mark {
-        case .seedling(let seed)?: .seedling(seed: seed)
         case .clay(let slug)?: .clay(slug)
         default: nil
         }
         let title = references.view(reference).label
-        let chat = ChatViewController(session: session, agentId: entity.agentId, title: title, spaceId: row?.spaceId, seedling: intro)
+        let chat = ChatViewController(session: session, agentId: entity.agentId, title: title, spaceId: row?.spaceId, intro: intro)
         navigationController?.pushViewController(chat, animated: true)
     }
 
@@ -1991,7 +2065,7 @@ extension ChatViewController {
                 screen.view.layoutIfNeeded()
             }
             let top = screen.keyboardTracker.frame.minY
-            if screen.card.textView.isFirstResponder,
+            if screen.ownsKeyboard,
                top > screen.keyboardTop + 20, top < screen.view.bounds.maxY - 30 {
                 keyboardFrames += 1
                 keyboardGap = max(keyboardGap, abs(top - screen.card.frame.maxY - 8))
@@ -2077,6 +2151,17 @@ extension ChatViewController {
             return " hFit=\(fitting ?? "none") hWide=\(wide ?? "none")"
         }
     }
+}
+#endif
+
+#if DEBUG
+extension ChatViewController: ComposeTraced {
+    var traceResponder: String {
+        card.textView.isFirstResponder ? "composer" : newWorkPanel?.name.isFirstResponder == true ? "name" : "none"
+    }
+    var traceComposer: UIView? { card }
+    var tracePanel: UIView? { newWorkPanelGone ? nil : newWorkPanel }
+    var traceRoom: (top: CGFloat, bottom: CGFloat) { (view.safeAreaInsets.top, card.frame.minY) }
 }
 #endif
 

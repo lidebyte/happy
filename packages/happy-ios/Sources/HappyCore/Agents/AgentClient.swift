@@ -128,14 +128,31 @@ public final class AgentClient: Sendable {
     /// this phone; the same `id` again answers the same task. Unnamed, it is
     /// "New Task" until its first message names it, as desktop's blank
     /// name does. Its conversation's ID, as the computer gives it.
-    public func createTask(_ identity: Identity, mutationId: String) async throws -> String {
-        let json: JSONValue = .object([
-            "id": .string(identity.taskId), "mutationId": .string(mutationId),
-            "agentId": .string(identity.agentId), "workspaceId": .string(identity.workspaceId),
-        ])
-        let answer = try await decode(JSONValue.self, "POST", "/v0/tasks", json: json)
+    public func createTask(_ identity: Identity, mutationId: String, name: String? = nil) async throws -> String {
+        let answer = try await decode(JSONValue.self, "POST", "/v0/tasks", json: Self.creation(identity, mutationId: mutationId, name: name))
         guard let agentId = answer["task"]?["agent"]?["id"]?.stringValue else { throw AgentClientError.invalidResponse }
         return agentId
+    }
+
+    /// Makes a bot (`POST /v0/bots`) under the names this phone gives it,
+    /// as desktop's `createBot` does; the same `mutationId` again answers
+    /// the same bot. Unnamed, the computer names it from its first message
+    /// ("New Bot" until then). Its conversation's ID, as the computer gives it.
+    public func createBot(_ identity: Identity, mutationId: String, name: String? = nil) async throws -> String {
+        let answer = try await decode(JSONValue.self, "POST", "/v0/bots", json: Self.creation(identity, mutationId: mutationId, name: name))
+        guard let agentId = answer["bot"]?["agent"]?["id"]?.stringValue else { throw AgentClientError.invalidResponse }
+        return agentId
+    }
+
+    /// A task's or bot's names; a blank name is left out rather than sent,
+    /// which the computer would refuse.
+    private static func creation(_ identity: Identity, mutationId: String, name: String?) -> JSONValue {
+        var fields: [String: JSONValue] = [
+            "id": .string(identity.taskId), "mutationId": .string(mutationId),
+            "agentId": .string(identity.agentId), "workspaceId": .string(identity.workspaceId),
+        ]
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty { fields["name"] = .string(name) }
+        return .object(fields)
     }
 
     /// The tasks the person joined, as sent, each holding the person's own

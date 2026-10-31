@@ -41,6 +41,7 @@ import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.chat.isCurrentTurnComplete
 import com.slopus.happy.model.GitStatus
+import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.ui.components.Header
@@ -254,7 +255,7 @@ fun ChatScreen(
             scrolled = session != null && !LocalWindowLayout.current.isLandscape && listState.canScrollForward,
             left = { HeaderBackButton(actions.onBack) },
             titleContent = {
-                ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle)
+                ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle, working = state.sessionState == SessionState.Thinking)
             },
             right = { ChatHeaderActions(session, modes, session?.metadata ?: pending?.anchor?.metadata, actions) },
         )
