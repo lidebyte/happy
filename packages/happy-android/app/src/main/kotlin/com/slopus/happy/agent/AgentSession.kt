@@ -148,6 +148,9 @@ class AgentSession internal constructor(
         settingsQueued.trySend(Unit)
     }
 
+    /** The person's own profile on this agent, as Settings' Profile row and page show it. */
+    val profile: AgentProfileSource by lazy { AgentProfileSource(client, events, scope) }
+
     /** Bots' pictures, as home's rows draw them. */
     val pictures = AgentPictures(connectionId) { path -> client.send("GET", path).body }
 
