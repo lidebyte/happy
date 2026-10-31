@@ -13,16 +13,20 @@ private struct GroupedHomeSockets: WebSocketConnector {
 }
 
 /// A computer with bots, tasks, Surfaces and a project, each with nested
-/// conversations. A task made here (`POST /v0/tasks`) is a row of its own
-/// each time it is asked for, so one asked for twice shows twice; it names
-/// itself after its first message, as the daemon does.
+/// conversations. A task or bot made here (`POST /v0/tasks`, `/v0/bots`)
+/// is a row of its own each time it is asked for, so one asked for twice
+/// shows twice; given no name, it names itself after its first message, as
+/// the daemon does.
 private actor GroupedHomeTransport: AgentTransport {
     /// The cloned repo's picture, as the daemon serves it.
     let avatar: Data
     init(avatar: Data) { self.avatar = avatar }
 
-    /// Tasks made here, oldest first, and the events stream to tell of them.
+    /// Tasks and bots made here, newest first, the ones still to be named
+    /// by their first message, and the events stream to tell of them.
     private var made: [[String: Any]] = []
+    private var madeBots: [[String: Any]] = []
+    private var unnamed: Set<String> = []
     private var events: AsyncThrowingStream<Data, Error>.Continuation?
     private var sequence = 1
 
@@ -66,7 +70,7 @@ private actor GroupedHomeTransport: AgentTransport {
         [
             "cursor": "c1", "profile": ["userId": NSNull()],
             "userSettings": [],
-            "bots": Self.bots, "tasks": tasks,
+            "bots": bots, "tasks": tasks,
             "taskMemberships": tasks.map { ["taskId": $0["id"]!] },
             "surfaces": Self.surfaces,
             "projects": [
@@ -80,6 +84,7 @@ private actor GroupedHomeTransport: AgentTransport {
     }
 
     private var tasks: [[String: Any]] { made + Self.tasks }
+    private var bots: [[String: Any]] { madeBots + Self.bots }
 
     private func tell(_ type: String, _ payload: [String: Any]) {
         sequence += 1
@@ -91,23 +96,36 @@ private actor GroupedHomeTransport: AgentTransport {
         let route = path.split(separator: "?").first.map(String.init) ?? path
         if route == "/v0/projects/p1/avatar" { return .init(status: 200, body: avatar) }
         let sent = body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
-        if method == "POST", route == "/v0/tasks" {
-            let agentId = sent["agentId"] as? String ?? "made-\(made.count)"
-            var agent = Self.agent(agentId, "New Task", ago: 0)
+        if method == "POST", route == "/v0/tasks" || route == "/v0/bots" {
+            let bot = route == "/v0/bots"
+            let agentId = sent["agentId"] as? String ?? "made-\(made.count + madeBots.count)"
+            let name = sent["name"] as? String ?? (bot ? "New Bot" : "New Task")
+            if sent["name"] == nil { unnamed.insert(agentId) }
+            var agent = Self.agent(agentId, name, ago: 0)
             agent["workspaceId"] = sent["workspaceId"] as? String ?? "w-\(agentId)"
-            let task: [String: Any] = ["id": sent["id"] as? String ?? agentId, "name": "New Task", "agent": agent]
-            made.insert(task, at: 0)
-            tell("task.created", ["task": task])
-            return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["task": task, "membership": ["taskId": task["id"]!]]))
+            let made: [String: Any] = ["id": sent["id"] as? String ?? agentId, "name": name, "status": "active", "agent": agent]
+            if bot {
+                madeBots.insert(made, at: 0)
+                tell("bot.created", ["bot": made])
+                return .init(status: 201, body: try JSONSerialization.data(withJSONObject: ["bot": made]))
+            }
+            self.made.insert(made, at: 0)
+            tell("task.created", ["task": made])
+            return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["task": made, "membership": ["taskId": made["id"]!]]))
         }
         if route.hasPrefix("/v0/agents/") {
             let agentId = route.split(separator: "/")[2]
             if method == "POST", route.hasSuffix("/send") {
-                // The first message names its task.
-                if let index = made.firstIndex(where: { ($0["agent"] as? [String: Any])?["id"] as? String == String(agentId) && $0["name"] as? String == "New Task" }),
-                   let text = sent["text"] as? String {
-                    made[index]["name"] = text
-                    tell("task.updated", ["taskId": made[index]["id"]!])
+                // The first message names its task or bot, if it has no name.
+                if unnamed.remove(String(agentId)) != nil, let text = sent["text"] as? String {
+                    func owns(_ entry: [String: Any]) -> Bool { (entry["agent"] as? [String: Any])?["id"] as? String == String(agentId) }
+                    if let index = made.firstIndex(where: owns) {
+                        made[index]["name"] = text
+                        tell("task.updated", ["taskId": made[index]["id"]!])
+                    } else if let index = madeBots.firstIndex(where: owns) {
+                        madeBots[index]["name"] = text
+                        tell("bot.updated", ["botId": madeBots[index]["id"]!])
+                    }
                 }
                 return .init(status: 200, body: Data("{}".utf8))
             }
@@ -126,7 +144,7 @@ private actor GroupedHomeTransport: AgentTransport {
             "providers": ["claude": ["type": "claude", "enabled": true, "models": [["id": "anthropic/opus-5", "enabled": true]]]],
         ]]
         case "/v0/bootstrap/desktop": object = desktop()
-        case "/v0/bots": object = ["bots": Self.bots]
+        case "/v0/bots": object = ["bots": bots]
         case "/v0/tasks": object = ["tasks": tasks, "memberships": tasks.map { ["taskId": $0["id"]!] }]
         case "/v0/surfaces": object = ["surfaces": Self.surfaces.map { ["id": $0["id"]!, "name": $0["name"]!, "type": $0["type"]!] }]
         default: return .init(status: 404, body: Data("{}".utf8))

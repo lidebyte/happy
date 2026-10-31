@@ -30,8 +30,15 @@ final class HomeRendererHarness {
         let sessionCount = Int(option("-sessionCount") ?? "0") ?? 0
         let archiveCount = Int(option("-archiveCount") ?? "0") ?? 0
         let secondMachine = arguments.contains("-secondMachine")
+        // `-freshSettings`: this launch starts from no stored settings or
+        // drafts, whatever an earlier one left.
+        let fresh = arguments.contains("-freshSettings")
         Task {
-            let controller = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/home-renderer-harness", credentialStore: InMemoryCredentialStore(), storeDirectory: nil, rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, localSettingsFactory: { UserDefaultsStore(suiteName: "home-renderer-harness.\($0)") }, transport: HomeHarnessOffline(), connector: HomeHarnessNoSocket())
+            let controller = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/home-renderer-harness", credentialStore: InMemoryCredentialStore(), storeDirectory: nil, rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, localSettingsFactory: { id in
+                let suite = "home-renderer-harness.\(id)"
+                if fresh { UserDefaults.standard.removePersistentDomain(forName: suite) }
+                return UserDefaultsStore(suiteName: suite)
+            }, transport: HomeHarnessOffline(), connector: HomeHarnessNoSocket())
             do {
                 // `-accountMix`: the switcher lists one of each kind, an
                 // account made for a computer, this legacy one and an agent

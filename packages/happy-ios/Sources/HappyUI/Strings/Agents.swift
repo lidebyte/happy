@@ -81,14 +81,21 @@ extension Strings {
     public static let connecting = "Connecting…"
     public static let offline = "Offline — showing what this phone last saw."
     public static let unanswered = "The computer did not answer."
-    /// A new task's first message couldn't make the task; nothing was sent.
-    public static func newTaskFailed(_ reason: String) -> String {
-        "The task could not be started.\(reason.isEmpty ? "" : " \(reason)") Your text and attachments are still here."
+    /// New work's first message couldn't make it; nothing was sent.
+    public static func newWorkFailed(_ kind: NewTask.Kind, _ reason: String) -> String {
+        "The \(kind == .bot ? "bot" : "task") could not be started.\(reason.isEmpty ? "" : " \(reason)") Your text and attachments are still here."
     }
 
     // New work (MakeStuffView.tsx).
     public static let introLine = "Say what it is — it’ll find its place."
-    public static let composerPlaceholder = "Describe it…"
+
+    // What new work will be (`NewWorkPanel`); desktop's create-bot page
+    // asks the name as "Name, generated if left blank".
+    public static let newWorkTask = "Task"
+    public static let newWorkBot = "Bot"
+    public static let newWorkName = "Name (optional)"
+    public static let newWorkTaskNote = "A task names itself from its first message unless you name it."
+    public static let newWorkBotNote = "A bot is one lasting conversation with a folder of its own."
 
     // The working line (AgentWorkingStatus.tsx, happyAgentConnection's `activityOf`).
     public static let phaseWaitingForModel = "Waiting for model"

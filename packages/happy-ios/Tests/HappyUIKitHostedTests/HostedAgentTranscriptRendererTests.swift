@@ -54,7 +54,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
     }
 
     private func chat(_ session: Session, previewing: Bool = false) -> ChatViewController {
-        let chat = ChatViewController(session: session, agentId: "renderer", title: "Chat", spaceId: nil, seedling: nil, previewing: previewing)
+        let chat = ChatViewController(session: session, agentId: "renderer", title: "Chat", spaceId: nil, intro: nil, previewing: previewing)
         chat.view.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
         chat.loadViewIfNeeded()
         chat.view.layoutIfNeeded()

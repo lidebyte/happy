@@ -571,18 +571,17 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         guard let agentId = row.agentId, row.kind == .space || row.kind == .session, row.targetKind != "surface" else { return }
         if agentId == self.agentId { navigationController?.popViewController(animated: true); return }
         let intro: ChatViewController.Intro? = switch row.mark {
-        case .seedling(let seed): .seedling(seed: seed)
         case .clay(let slug): .clay(slug)
         default: nil
         }
-        navigationController?.pushViewController(ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, seedling: intro), animated: true)
+        navigationController?.pushViewController(ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, intro: intro), animated: true)
     }
 
     private func openChild(_ children: [SessionDetail.Child]?, _ index: Int) {
         guard let children, children.indices.contains(index) else { return }
         let child = children[index]
         let title = child.title ?? Strings.subagent
-        navigationController?.pushViewController(ChatViewController(session: session, agentId: child.id, title: title, spaceId: nil, seedling: nil), animated: true)
+        navigationController?.pushViewController(ChatViewController(session: session, agentId: child.id, title: title, spaceId: nil, intro: nil), animated: true)
     }
 
     /// A picture in the viewer, paging through every picture shared; a
