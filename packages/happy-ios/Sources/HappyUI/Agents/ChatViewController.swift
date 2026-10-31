@@ -1195,6 +1195,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
     /// The header's grey line: what the agent is at, in a word, while it is.
     private func updateHeaderStatus() {
         header.status = Strings.HeaderStatus.text(headerState, activity: chat.activity, loaded: chat.loaded)
+        // "Thinking" and "Working" sweep while the working line's loader
+        // runs; a question or a wait is said still.
+        header.statusShimmers = headerState == .online && chat.loaded && ChatJumpButton.spins(chat.activity)
     }
 
     // MARK: Layout

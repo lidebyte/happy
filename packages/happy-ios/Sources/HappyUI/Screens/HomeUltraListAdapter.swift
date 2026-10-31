@@ -364,11 +364,16 @@ final class HomeUltraOverlay: UIView {
             avatar.frame = plan.avatarFrame
             addSubview(avatar)
         }
-        if let (value, style, frame) = plan.shimmer {
-            let label = LegacyShimmerLabel(style: style)
-            label.string = value; label.isShimmering = true; label.frame = frame
-            label.alpha = plan.contentAlpha
-            addSubview(label)
+        if let title = plan.shimmer {
+            // The bitmap drew the title; only the band is live, its copy
+            // drawn off the main thread.
+            let band = ShimmerBand(
+                frame: title.frame, run: CGRect(x: 0, y: 0, width: title.runWidth, height: title.frame.height),
+                scale: plan.environment.text.displayScale, draw: { plan.drawShimmerCopy(in: $0) }
+            )
+            band.alpha = plan.contentAlpha
+            band.accessibilityIdentifier = "shimmer"
+            addSubview(band)
         }
         for (color, frame) in plan.pulsingDots {
             let dot = StatusDotView(frame: frame)

@@ -572,7 +572,7 @@ final class ChatPlaceholderView: UIView {
     let pagingSpinner = UIActivityIndicatorView(style: .medium)
     private let icon = IconView(size: 72, tint: Palette.textSecondary)
     /// PendingChatPlaceholder's "Starting a new chat…".
-    private let shimmer = LegacyShimmerLabel(style: TextStyles.pendingChatTitle)
+    private let shimmer = ShimmerLabel(style: TextStyles.pendingChatTitle)
     /// The lines' views, reused from plan to plan.
     private var texts: [ChatTextView] = []
     private var model: ChatPlaceholderModel?
@@ -586,6 +586,8 @@ final class ChatPlaceholderView: UIView {
         icon.isHidden = true
         addSubview(icon)
         shimmer.isHidden = true
+        // A chat not there yet: dimmed letters under a full-strength band.
+        shimmer.sweep = .lift
         addSubview(shimmer)
         button.isHidden = true
         button.onTap = { [weak self] in self?.onAction?() }
@@ -634,7 +636,7 @@ final class ChatPlaceholderView: UIView {
             icon.setLayoutFrame(frame)
         }
         shimmer.isHidden = frames.title == nil
-        shimmer.isShimmering = frames.title != nil
+        shimmer.shimmering = frames.title != nil
         if let frame = frames.title, let title = model.title {
             if shimmer.string != title { shimmer.string = title }
             shimmer.setLayoutFrame(frame)

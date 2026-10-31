@@ -42,11 +42,11 @@ final class ChatHeaderView: UIView {
 
     /// The words and their colour, crossfaded together.
     func setStatus(_ text: String, color: UIColor) {
-        guard text != statusLabel.text || color != statusColor else { return }
+        guard text != statusLabel.string || color != statusColor else { return }
         statusColor = color
         if status != text { status = text; return }
         HeaderStatusTransition.apply(to: statusLabel) { [self] in
-            statusLabel.text = text
+            statusLabel.attributedText = NSAttributedString(string: text, attributes: [.font: Self.statusFont])
             statusLabel.textColor = color
         }
         statusWidth = width(of: text)
@@ -77,7 +77,17 @@ final class ChatHeaderView: UIView {
         get { backdrop.seed }
         set { backdrop.seed = newValue }
     }
-    private let statusLabel = UILabel()
+    private let statusLabel = ShimmerLabel()
+    private static var statusFont: UIFont { LegacyFonts.font(.regular, size: 13) }
+
+    /// The status is work under way ("Thinking", "Working"): it carries
+    /// the sheen, as desktop's working line's phase does.
+    var statusShimmers = false {
+        didSet { statusLabel.shimmering = statusShimmers }
+    }
+
+    /// The status's band is running (tests).
+    var statusSweeps: Bool { statusLabel.band.sweeps }
 
     override init(frame: CGRect) {
         // Never zero wide: the bar doesn't look again at a title view that was.
@@ -95,12 +105,11 @@ final class ChatHeaderView: UIView {
             self?.layoutIfNeeded()
         }
         capsule.contentView.addSubview(titleView)
-        statusLabel.font = LegacyFonts.font(.regular, size: 13)
         statusLabel.textColor = UIColor(Palette.textSecondary)
-        statusLabel.textAlignment = .center
-        statusLabel.lineBreakMode = .byTruncatingTail
-        statusLabel.text = status
-        statusLabel.accessibilityIdentifier = "chat-status"
+        statusLabel.alignment = .center
+        statusLabel.attributedText = NSAttributedString(string: status, attributes: [.font: Self.statusFont])
+        statusLabel.ground = UIColor(Palette.surface)
+        statusLabel.textLabel.accessibilityIdentifier = "chat-status"
         capsule.contentView.addSubview(statusLabel)
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(open)))
     }
@@ -110,7 +119,7 @@ final class ChatHeaderView: UIView {
     @objc private func open() { onOpen?() }
 
     private func width(of text: String) -> CGFloat {
-        (text as NSString).size(withAttributes: [.font: statusLabel.font!]).width
+        (text as NSString).size(withAttributes: [.font: Self.statusFont]).width
     }
 
     private lazy var statusWidth: CGFloat = width(of: status)

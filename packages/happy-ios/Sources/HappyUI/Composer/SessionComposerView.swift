@@ -77,7 +77,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     var headerStatus: ChatHeaderStatus? { status.map(Self.headerStatus) }
 
     static func headerStatus(_ status: ComposerStatus) -> ChatHeaderStatus {
-        ChatHeaderStatus(text: text(status.text), color: UIColor(color(status.tone)))
+        var header = ChatHeaderStatus(text: text(status.text), color: UIColor(color(status.tone)))
+        if case .thinking = status.text { header.working = true }
+        return header
     }
 
     /// What the header says before the composer is made: from the record

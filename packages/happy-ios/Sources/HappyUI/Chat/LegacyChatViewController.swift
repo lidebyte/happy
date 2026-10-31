@@ -1031,7 +1031,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// start is doing; any other, its session's status.
     private var shownStatus: ChatHeaderStatus? {
         if let compose = composing, isComposing {
-            return compose.progress.map { ChatHeaderStatus(text: $0, color: UIColor(Palette.textSecondary)) }
+            return compose.progress.map { ChatHeaderStatus(text: $0, color: UIColor(Palette.textSecondary), working: true) }
         }
         return sessionStatus
     }
@@ -1045,6 +1045,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             header.resize()
         }
         header.setStatus(status?.text ?? "", color: status?.color ?? UIColor(Palette.textSecondary))
+        header.statusShimmers = status?.working == true
         // Made with the view, at the screen's text size.
         guard isViewLoaded else { return }
         plainTitleView.update(title: headerTitle, subtitle: status?.text, changes: nil)

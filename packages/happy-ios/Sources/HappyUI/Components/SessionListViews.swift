@@ -12,7 +12,7 @@ final class SessionRowCell: HomeCardCell {
     static let reuseIdentifier = "session"
 
     let avatar = AvatarView()
-    let titleLabel = LegacyShimmerLabel(style: TextStyles.sessionTitle)
+    let titleLabel = ShimmerLabel(style: TextStyles.sessionTitle)
     let timestampLabel = StyledLabel(style: TextStyles.sessionTimestamp, color: Palette.textSecondary, lines: 1, alignment: .right)
     let dot = UIView()
     let projectLabel = StyledLabel(style: TextStyles.sessionProject, color: Palette.textSecondary, lines: 1)
@@ -58,7 +58,7 @@ final class SessionRowCell: HomeCardCell {
         }
         titleLabel.string = row.title ?? Strings.Session.newChat
         titleLabel.color = row.faded ? Palette.textSecondary : Palette.text
-        titleLabel.isShimmering = row.shimmersTitle
+        titleLabel.shimmering = row.shimmersTitle
         timestampLabel.string = row.timestamp
         // The stamp keeps its width under a dot so the title never jumps.
         timestampLabel.isHidden = row.corner != .timestamp
@@ -137,81 +137,6 @@ final class SessionRowCell: HomeCardCell {
     override func setSelected(_ selected: Bool, animated: Bool) {
         super.setSelected(selected, animated: animated)
         if let row { dot.backgroundColor = UIColor(row.corner == .blockedDot ? Palette.sessionBlockedDot : Palette.sessionReadyDot) }
-    }
-}
-
-/// A title that shimmers while the agent works (ShimmerText): the base text
-/// in the secondary colour with a band of the full text colour sweeping
-/// across it.
-final class LegacyShimmerLabel: UIView {
-    var string: String {
-        get { base.string }
-        set { base.string = newValue; highlight.string = newValue; setNeedsLayout() }
-    }
-
-    var color: ColorToken = Palette.text {
-        didSet { applyColors() }
-    }
-
-    var isShimmering = false {
-        didSet { if isShimmering != oldValue { applyColors(); updateAnimation() } }
-    }
-
-    private let base: StyledLabel
-    private let highlight: StyledLabel
-    private let band = CAGradientLayer()
-
-    init(style: TextStyle) {
-        base = StyledLabel(style: style, color: Palette.text, lines: 1)
-        highlight = StyledLabel(style: style, color: Palette.text, lines: 1)
-        super.init(frame: .zero)
-        addSubview(base)
-        addSubview(highlight)
-        band.startPoint = CGPoint(x: 0, y: 0.5)
-        band.endPoint = CGPoint(x: 1, y: 0.5)
-        band.colors = [UIColor.clear.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
-        band.locations = [0, 0.5, 1]
-        highlight.layer.mask = band
-        isUserInteractionEnabled = false
-        applyColors()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override func sizeThatFits(_ size: CGSize) -> CGSize {
-        base.sizeThatFits(size)
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        base.frame = bounds
-        highlight.frame = bounds
-        band.frame = CGRect(x: -bounds.width, y: 0, width: bounds.width, height: bounds.height)
-        updateAnimation()
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        updateAnimation()
-    }
-
-    private func applyColors() {
-        base.color = isShimmering ? Palette.textSecondary : color
-        highlight.isHidden = !isShimmering
-    }
-
-    private func updateAnimation() {
-        band.removeAllAnimations()
-        guard isShimmering, window != nil, bounds.width > 0 else { return }
-        let sweep = CABasicAnimation(keyPath: "position.x")
-        sweep.fromValue = -bounds.width / 2
-        sweep.toValue = bounds.width * 1.5
-        sweep.duration = 1.6
-        sweep.repeatCount = .infinity
-        band.add(sweep, forKey: "shimmer")
     }
 }
 

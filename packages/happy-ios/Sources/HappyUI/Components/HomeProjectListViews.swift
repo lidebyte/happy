@@ -278,7 +278,7 @@ final class ProjectCardCell: HomeCardCell {
 
     let avatar = AvatarView()
     let stem = UIView()
-    let nameLabel = LegacyShimmerLabel(style: TextStyles.projectName)
+    let nameLabel = ShimmerLabel(style: TextStyles.projectName)
     let dot = ActivityDotView()
     let changes = GitChangesView()
     let addButton = HeaderIconButton(.ionicons("add"), size: 18, label: "")
@@ -306,7 +306,7 @@ final class ProjectCardCell: HomeCardCell {
         avatar.content = entry.avatar.map { .init(avatar: $0, style: style, monochrome: monochrome) }
         stem.isHidden = entry.worktreeCount == 0
         nameLabel.string = entry.name
-        nameLabel.isShimmering = entry.activity.working
+        nameLabel.shimmering = entry.activity.working
         nameLabel.accessibilityLabel = entry.name
         dot.activity = entry.activity
         changes.changes = entry.changes
@@ -351,7 +351,7 @@ final class WorktreeCell: HomeCardCell {
     let trunk = UIView()
     let elbow = UIView()
     let chevron = IconView(.ionicons("chevron-down"), size: 13, tint: Palette.textSecondary)
-    let nameLabel = LegacyShimmerLabel(style: TextStyles.worktreeName)
+    let nameLabel = ShimmerLabel(style: TextStyles.worktreeName)
     let toggleLabel = StyledLabel(style: TextStyles.worktreeToggle, color: Palette.textSecondary, lines: 1)
     let dot = ActivityDotView()
     let changes = GitChangesView()
@@ -370,7 +370,7 @@ final class WorktreeCell: HomeCardCell {
         isToggle = false
         self.last = last
         nameLabel.string = worktree.title
-        nameLabel.isShimmering = worktree.activity.working
+        nameLabel.shimmering = worktree.activity.working
         dot.activity = worktree.activity
         changes.changes = worktree.changes
         changes.isHidden = worktree.changes == nil
@@ -432,7 +432,7 @@ final class ProjectChatCell: HomeCardCell {
     static let reuseIdentifier = "project-chat"
 
     let avatar = AvatarView()
-    let nameLabel = LegacyShimmerLabel(style: TextStyles.projectName)
+    let nameLabel = ShimmerLabel(style: TextStyles.projectName)
     let timestampLabel = StyledLabel(style: TextStyles.projectTimestamp, color: Palette.textSecondary, lines: 1)
     let dot = StatusDotView()
     private(set) var row: SessionRow?
@@ -451,7 +451,7 @@ final class ProjectChatCell: HomeCardCell {
         face.harness = nil
         avatar.content = .init(avatar: face, style: style, monochrome: monochrome)
         nameLabel.string = row.title ?? Strings.Session.newChat
-        nameLabel.isShimmering = row.shimmersTitle
+        nameLabel.shimmering = row.shimmersTitle
         timestampLabel.string = row.timestamp
         let showsDot = row.corner != .timestamp
         timestampLabel.isHidden = showsDot

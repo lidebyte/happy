@@ -196,10 +196,6 @@ public enum PickerMetrics {
 }
 
 public enum Metrics {
-    /// A shimmer's pale band (`ShimmerText` `sheen`): the ink mixed 15%
-    /// into its ground; one sweep takes 1.6s.
-    public static let sheenInk: CGFloat = 0.15
-    public static let sheenDuration: Double = 1.6
     /// A row that just became new flashes its tint twice in this long.
     public static let newPulseDuration: Double = 1.4
     // Desktop's sidebar at its own pixels (`Sidebar.tsx`: `SIDEBAR_ROW_HEIGHT`

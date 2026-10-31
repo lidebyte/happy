@@ -49,7 +49,9 @@ struct HomeRowDrawing: Sendable {
     var avatarAlpha: CGFloat = 1
     var monochromeAvatar = false
     var addFrame: CGRect?
-    var shimmer: (String, TextStyle, CGRect)?
+    /// A title whose work runs: drawn in the bitmap like any, with a
+    /// sheen band over it in the overlay (`ShimmerBand`).
+    var shimmer: ShimmerTitle?
     var accessibilityLabel = ""
     var accessibilityValue: String?
     var isHeading = false
@@ -122,6 +124,31 @@ struct HomeRowDrawing: Sendable {
         }
     }
 
+    /// A shimmering title: its words, how they are drawn, and how wide
+    /// they run in their frame.
+    struct ShimmerTitle: Sendable {
+        var value: String
+        var style: TextStyle
+        var color: ColorToken
+        var frame: CGRect
+        var runWidth: CGFloat
+    }
+
+    /// The surface the title sits on, which the band mixes toward.
+    var shimmerGround: ColorToken { card?.color ?? background ?? Palette.surface }
+
+    /// The shimmering title again in the sheen band's colour, at the
+    /// origin of its own frame: the copy its band masks.
+    nonisolated func drawShimmerCopy(in context: CGContext) {
+        guard let shimmer else { return }
+        var copy = self
+        copy.deferredDrawing = nil
+        copy.contentAlpha = 1
+        let band = Shimmer.highlight(.sheen, ink: shimmer.color, ground: shimmerGround)
+        copy.marks = [.text(shimmer.value, shimmer.style, band, CGRect(origin: .zero, size: shimmer.frame.size))]
+        copy.draw(in: context)
+    }
+
     nonisolated func resolved(_ token: ColorToken) -> UIColor {
         UIColor(dark ? token.dark : token.light)
     }
@@ -147,8 +174,11 @@ struct HomeRowDrawing: Sendable {
             if let frame { plan.marks.append(.fill(color, frame, round: round)) }
         }
         func title(_ value: String, style: TextStyle, frame: CGRect, working: Bool, color: ColorToken = Palette.text) {
-            if working { plan.shimmer = (value, style, frame) }
-            else { text(value, style, color, frame) }
+            text(value, style, color, frame)
+            guard working else { return }
+            // The band runs across the words, not the column they sit in.
+            let advance = deferred ? frame.width : HomeRowMeasurer.measure(value, style: style, in: environment.text, width: .greatestFiniteMagnitude, maxLines: 1).width
+            plan.shimmer = ShimmerTitle(value: value, style: style, color: color, frame: frame, runWidth: min(advance, frame.width))
         }
         func activity(_ activity: HomeActivity, frame: CGRect?) {
             guard activity.blocked || activity.unread else { return }
@@ -306,7 +336,7 @@ struct HomeRowDrawing: Sendable {
         }
         avatarFrame = moved(avatarFrame)
         addFrame = addFrame.map(moved)
-        shimmer = shimmer.map { ($0.0, $0.1, moved($0.2)) }
+        shimmer = shimmer.map { ShimmerTitle(value: $0.value, style: $0.style, color: $0.color, frame: moved($0.frame), runWidth: $0.runWidth) }
         pulsingDots = pulsingDots.map { ($0.0, moved($0.1)) }
         provider = provider.map { ($0.0, moved($0.1)) }
     }

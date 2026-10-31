@@ -13,7 +13,8 @@ import UIKit
 /// on a 50 disc inside its story ring, the title and the time, the lines its
 /// work changed and the agent's status in up to two lines, the person's
 /// draft or the empty mark on the last line, and one signal in the
-/// bottom-right lane (no shimmer, no trailing mark). In a grouped list
+/// bottom-right lane (no trailing mark). A bot, task or subtask whose
+/// work runs shimmers its title (`shimmers`). In a grouped list
 /// (`grouped`) a row is a cell of its card: the card's quiet fill, its corners
 /// where the row ends the card, iOS's grey highlight under a finger, and
 /// the hairline under it; a top-level glyph sits on a softly tinted tile;
@@ -158,7 +159,7 @@ final class RowView: UIView {
         case .clay(let slug): slug
         default: nil
         }
-        let value = [row.isNew ? Strings.newRow : nil, wears].compactMap { $0 }
+        let value = [row.isNew ? Strings.newRow : nil, wears, Self.shimmers(row) ? Strings.workingRow : nil].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
         if let story = row.story {
             let changes = row.lineChanges.flatMap { $0.isEmpty ? nil : "+\($0.added) \u{2212}\($0.deleted)" }
@@ -299,6 +300,20 @@ final class RowView: UIView {
         }
     }
 
+    /// Desktop's `shimmerLabel` (`Sidebar.tsx`), as Steve's desktop has
+    /// it with "Shimmer active titles" on: a place work runs in says so in
+    /// its own name for as long as it runs, under the sheen band in its
+    /// own colour. Places are bots and tasks (desktop's project and
+    /// workspace rows) and the subtasks under them; a Surface can't be busy.
+    static func shimmers(_ row: Row) -> Bool {
+        guard row.status == .working else { return false }
+        switch row.kind {
+        case .session: return true
+        case .space: return row.targetKind != "surface"
+        default: return false
+        }
+    }
+
     private func applyText(_ row: Row) {
         switch row.kind {
         case .section where grouped:
@@ -361,6 +376,7 @@ final class RowView: UIView {
         picture.tintColor = picture.contentMode == .center ? tileTint.map { UIColor($0.ink) } ?? ink : nil
         chevron.tintColor = UIColor(heading ? Palette.settingsSecondary : Palette.rowText)
         if let row, row.kind != .section, row.kind != .separator { applyText(row) }
+        label.shimmering = row.map(Self.shimmers) ?? false
         let carryable = row?.kind != .section && row?.kind != .separator
         // A story card is never tinted as new: its corner dot says so.
         let tinted = row?.isNew == true && row?.story == nil
@@ -619,154 +635,4 @@ final class RenameField: UITextField, UITextFieldDelegate {
     }
 }
 
-/// One line of text that can carry desktop's ShimmerText in its `sheen`
-/// sweep: the letters keep their own colour and a pale band, the ink 15%
-/// into the ground, wipes through them, the letters never moving. The
-/// band is a mask over a second copy of the text (one layer animation the
-/// render server runs, nothing per frame here); its ramp is three widths
-/// of the text sliding two widths a sweep, as desktop's background is.
-/// Every sweep keeps one clock (`epoch`), so shimmering titles move
-/// together and a change of text or width keeps the sweep where it was.
-/// It stops off screen, in the background and under Reduce Motion.
-final class ShimmerLabel: UIView {
-    private let base = UILabel()
-    private let highlight = UILabel()
-    private let band = CAGradientLayer()
-    private var sweptWidth: CGFloat = 0
-    private var backgrounded = false
-
-    /// The one clock every sweep keeps.
-    private static let epoch = CACurrentMediaTime()
-
-    var attributedText: NSAttributedString? {
-        didSet {
-            guard attributedText != oldValue else { return }
-            applyColors()
-            setNeedsLayout()
-        }
-    }
-
-    var textColor: UIColor = .label {
-        didSet { if textColor != oldValue { applyColors() } }
-    }
-
-    /// What the band goes toward: the surface behind the text.
-    var ground: UIColor = UIColor(Palette.surface) {
-        didSet { if ground != oldValue { applyColors() } }
-    }
-
-    var shimmering = false {
-        didSet {
-            if shimmering != oldValue {
-                setNeedsLayout()
-                update()
-            }
-        }
-    }
-
-    /// False where whatever holds the text has it scrolled out of sight.
-    var onScreen = true {
-        didSet { if onScreen != oldValue { update() } }
-    }
-
-    /// When the running sweep's clock began; nil while it doesn't run.
-    var sweepBegan: CFTimeInterval? { band.animation(forKey: "sweep")?.beginTime }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        isUserInteractionEnabled = false
-        for label in [base, highlight] {
-            label.lineBreakMode = .byTruncatingTail
-            label.numberOfLines = 1
-            addSubview(label)
-        }
-        highlight.isHidden = true
-        band.startPoint = CGPoint(x: 0, y: 0.5)
-        band.endPoint = CGPoint(x: 1, y: 0.5)
-        band.colors = [UIColor.clear.cgColor, UIColor.white.cgColor, UIColor.clear.cgColor]
-        band.locations = [0.4, 0.5, 0.6]
-        highlight.layer.mask = band
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
-        NotificationCenter.default.addObserver(self, selector: #selector(update), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(foregrounded), name: UIApplication.willEnterForegroundNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(wentAway), name: UIApplication.didEnterBackgroundNotification, object: nil)
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    /// Asked for less motion, the text simply stays.
-    private var sweeps: Bool { shimmering && onScreen && !backgrounded && window != nil && !UIAccessibility.isReduceMotionEnabled }
-
-    @objc private func update() {
-        highlight.isHidden = !sweeps
-        if sweeps { startBand() } else { band.removeAllAnimations() }
-    }
-
-    @objc private func wentAway() { backgrounded = true; update() }
-    @objc private func foregrounded() { backgrounded = false; update() }
-
-    private func applyColors() {
-        guard let text = attributedText, text.length > 0 else {
-            base.attributedText = nil
-            highlight.attributedText = nil
-            return
-        }
-        let ink = textColor.resolvedColor(with: traitCollection)
-        let pale = Self.mix(ink, into: ground.resolvedColor(with: traitCollection), keeping: Metrics.sheenInk)
-        for (label, color) in [(base, ink), (highlight, pale)] {
-            let colored = NSMutableAttributedString(attributedString: text)
-            colored.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: colored.length))
-            label.attributedText = colored
-        }
-    }
-
-    /// `color-mix(in srgb, ink keep%, ground)`.
-    private static func mix(_ ink: UIColor, into ground: UIColor, keeping share: CGFloat) -> UIColor {
-        var (r1, g1, b1, a1): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
-        var (r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
-        ink.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
-        ground.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
-        let rest = 1 - share
-        return UIColor(red: r1 * share + r2 * rest, green: g1 * share + g2 * rest, blue: b1 * share + b2 * rest, alpha: a1 * share + a2 * rest)
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        base.frame = bounds
-        highlight.frame = bounds
-        // Sidebar titles do not shimmer. Measuring text for an invisible
-        // gradient would force synchronous text layout on every title update.
-        guard shimmering else { return }
-        let width = max(1, min(bounds.width, base.intrinsicContentSize.width))
-        guard width != sweptWidth || band.bounds.height != bounds.height else { return }
-        sweptWidth = width
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        band.frame = CGRect(x: -2 * width, y: 0, width: 3 * width, height: bounds.height)
-        CATransaction.commit()
-        if sweeps { startBand() }
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        // Out of the window the band stops; back in, it picks up the clock.
-        update()
-    }
-
-    private func startBand() {
-        let width = band.bounds.width / 3
-        guard width > 0 else { return }
-        // Already running at this width: nothing to start again.
-        if let running = band.animation(forKey: "sweep") as? CABasicAnimation, running.toValue as? CGFloat == width * 1.5 { return }
-        band.removeAnimation(forKey: "sweep")
-        let sweep = CABasicAnimation(keyPath: "position.x")
-        sweep.fromValue = -width * 0.5
-        sweep.toValue = width * 1.5
-        sweep.duration = Metrics.sheenDuration
-        sweep.repeatCount = .infinity
-        sweep.beginTime = band.convertTime(Self.epoch, from: nil)
-        sweep.isRemovedOnCompletion = false
-        sweep.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
-        band.add(sweep, forKey: "sweep")
-    }
-}
 #endif
