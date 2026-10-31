@@ -270,6 +270,9 @@ struct SettingsRow {
     /// Its picture, drawn round in the icon's place; the icon is the
     /// fallback for one that hasn't come yet.
     var image: UIImage?
+    /// An avatar row's placeholder seed, when `image` is its placeholder:
+    /// it moves with Animated Avatars on (`ProfilePictures.liveSeed`).
+    var liveSeed: String?
     var value: String?
     var accessory: SettingsLayout.Accessory = .chevron
     var destructive = false
@@ -359,6 +362,8 @@ final class SettingsCardView: UIView {
         static let codeFont = Fonts.mono(bold: false, size: 15)
         private let tile = UIView()
         private let glyph = UIImageView()
+        /// An account's placeholder, moving (`SettingsRow.liveSeed`).
+        private let live = AvatarPlaceholderSlot()
         private let title = UILabel()
         private let value = UILabel()
         private let chevron = UIImageView(image: Glyphs.image("chevron-right", size: 14))
@@ -379,6 +384,7 @@ final class SettingsCardView: UIView {
             glyph.tintColor = UIColor(Palette.settingsGlyph)
             glyph.contentMode = .center
             tile.addSubview(glyph)
+            live.liveHost = glyph
             title.font = Self.titleFont
             value.font = Self.valueFont
             value.textColor = UIColor(Palette.settingsSecondary)
@@ -427,6 +433,7 @@ final class SettingsCardView: UIView {
                     glyph.frame = tile.bounds
                 }
             }
+            live.animate(seed: frames.icon != nil && row.avatar ? row.liveSeed : nil)
             title.text = row.title
             title.font = row.isCode ? Self.codeFont : Self.titleFont
             title.numberOfLines = row.isCode ? 0 : 1
@@ -575,6 +582,15 @@ enum ProfilePictures {
         let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
         guard direct.map({ $0.avatar == nil }) ?? (account.avatarURL == nil) else { return nil }
         return AvatarPlaceholderImages.cached(seed: placeholderSeed(account, context: context), side: placeholderSide)
+    }
+
+    /// What its placeholder moves as with Animated Avatars on: its seed,
+    /// only when it has no picture of its own (nor a thumbhash of one), so
+    /// a real picture is never covered.
+    static func liveSeed(_ account: AccountSummary, context: AppContext) -> String? {
+        let direct = context.account.agentConnections.accounts.first { $0.id == account.id }
+        let hasPicture = direct.map { $0.avatar != nil || $0.thumbhash != nil } ?? (account.avatarURL != nil || account.avatarThumbhash != nil)
+        return hasPicture ? nil : placeholderSeed(account, context: context)
     }
 
     /// Nil only when the placeholder isn't bundled.

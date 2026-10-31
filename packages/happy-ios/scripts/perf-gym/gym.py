@@ -816,7 +816,8 @@ def cmd_run(args):
     titles = {"long": args.chat or SYNTHETIC["long"], "images": args.images or SYNTHETIC["images"]}
     titles["paging"] = args.paging or titles["long"]
     env = {"GYM_CHAT": titles["long"], "GYM_IMAGES": titles["images"], "GYM_PAGING": titles["paging"], "GYM_STREAM": titles["long"],
-           "GYM_ITERATIONS": str(args.iterations)}
+           "GYM_ITERATIONS": str(args.iterations), "GYM_LIVE_AVATARS": "1" if args.live_avatars else "0",
+           "GYM_AVATAR_FPS": str(args.avatar_fps or "")}
     label = args.label or time.strftime("%Y%m%d-%H%M%S")
     results_dir = os.path.join(WORK, "results")
     names = args.workloads or list(WORKLOADS)
@@ -908,6 +909,8 @@ def main():
     p.add_argument("--images", help="the chat heavy with pictures"); p.add_argument("--paging", help="the chat paged in (default the long one)")
     p.add_argument("--iterations", type=int, default=1, help="XCTest metric iterations")
     p.add_argument("--no-prime", action="store_true", help="the chats are already read back to their first message")
+    p.add_argument("--live-avatars", action="store_true", help="Animated Avatars on: the chat header's shader moves")
+    p.add_argument("--avatar-fps", type=float, help="live avatars at this many frames a second")
     p.set_defaults(func=cmd_run)
     p = sub.add_parser("check"); p.add_argument("results"); p.add_argument("--budgets"); p.set_defaults(func=cmd_check)
     p = sub.add_parser("compare"); p.add_argument("a"); p.add_argument("b"); p.set_defaults(func=cmd_compare)

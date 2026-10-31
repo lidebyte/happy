@@ -30,7 +30,9 @@ private let skipsQuiescence: Bool = {
 /// `GYM_CHAT` names the conversation's row (its title), `GYM_IMAGES` the
 /// one heavy with pictures, `GYM_STREAM` the one a reply streams into
 /// (`fakellm.py`'s "stream P W"). `GYM_ITERATIONS` repeats the XCTest
-/// metrics (default 3).
+/// metrics (default 3). `GYM_LIVE_AVATARS=1` turns Animated Avatars on, so
+/// the chat header's shader moves through the workload; `GYM_AVATAR_FPS`
+/// draws them at another rate.
 @MainActor
 final class ScrollPerfGymTests: XCTestCase {
     /// The transcript, whichever renderer drew it: the agents' chat draws
@@ -50,6 +52,8 @@ final class ScrollPerfGymTests: XCTestCase {
         print("ScrollPerfGymTests skips quiescence: \(skipsQuiescence)")
         app.launchEnvironment["HAPPY_GYM_METER"] = "1"
         app.launchArguments += ["-v2.direct", "YES"]
+        if environment["GYM_LIVE_AVATARS"] == "1" { app.launchArguments += ["-live-avatars", "YES"] }
+        if let fps = environment["GYM_AVATAR_FPS"], !fps.isEmpty { app.launchArguments += ["-avatar-fps", fps] }
     }
 
     // MARK: Workloads

@@ -23,6 +23,13 @@ final class AgentEditButton: UIButton {
         didSet { if picture !== oldValue { showPicture(fade: oldValue != nil) } }
     }
 
+    /// The placeholder's seed when `picture` is the placeholder: it moves
+    /// with Animated Avatars on (`ProfilePictures.liveSeed`).
+    var liveSeed: String? {
+        didSet { if liveSeed != oldValue { live.animate(seed: liveSeed) } }
+    }
+    private let live = AvatarPlaceholderSlot()
+
     /// What each menu item asks for.
     var ask: (@MainActor (ChatPrefill) -> Void)?
 
@@ -39,6 +46,7 @@ final class AgentEditButton: UIButton {
         avatar.clipsToBounds = true
         avatar.isUserInteractionEnabled = false
         addSubview(avatar)
+        live.liveHost = avatar
         badge.isUserInteractionEnabled = false
         pencil.tintColor = UIColor(Palette.settingsText)
         pencil.contentMode = .center

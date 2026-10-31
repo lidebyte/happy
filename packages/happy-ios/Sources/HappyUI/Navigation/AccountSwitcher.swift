@@ -73,6 +73,7 @@ final class AccountSwitcher: NSObject {
         guard let active = current(in: accounts) else { return }
         button.title = name(active)
         button.picture = images[active.id] ?? Self.fallback(active)
+        button.liveSeed = ProfilePictures.liveSeed(active, context: context)
         button.accessibilityLabel = Strings.AccountSwitcher.switcher
         button.accessibilityValue = [name(active), subtitle].joined(separator: ", ")
         button.frame.size = button.sizeThatFits(.zero)
@@ -202,8 +203,17 @@ final class AccountSwitcherButton: UIButton {
         didSet { if picture !== oldValue { ImageFade.show(picture, in: pictureView, fade: oldValue != nil && picture != nil) } }
     }
 
+    /// The placeholder's seed when `picture` is the placeholder: it moves
+    /// with Animated Avatars on (`ProfilePictures.liveSeed`). The menu's
+    /// pictures are the system's bitmaps and stay still.
+    var liveSeed: String? {
+        didSet { if liveSeed != oldValue { live.animate(seed: liveSeed) } }
+    }
+    private let live = AvatarPlaceholderSlot()
+
     override init(frame: CGRect) {
         super.init(frame: frame)
+        live.liveHost = pictureView
         pictureView.contentMode = .scaleAspectFill
         pictureView.clipsToBounds = true
         pictureView.layer.cornerRadius = AccountSwitcherLayout.Metrics.picture / 2

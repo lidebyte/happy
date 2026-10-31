@@ -196,6 +196,57 @@ final class HostedAccountPlaceholderTests: XCTestCase {
         withExtendedLifetime(controller) {}
     }
 
+    // MARK: Animated Avatars
+
+    private static func lives(in view: UIView) -> [LiveAvatarView] {
+        ((view as? LiveAvatarView).map { [$0] } ?? []) + view.subviews.flatMap { lives(in: $0) }
+    }
+
+    /// With Animated Avatars on, every account without a picture moves in
+    /// Settings (the big picture and each row of the accounts card) and in
+    /// the switcher's button, as the placeholder its ID picks; an account
+    /// with a picture of its own never does. Off, nothing there moves.
+    func testSettingsAndTheSwitcherMoveWithAnimatedAvatars() async throws {
+        UserDefaults.standard.removeObject(forKey: LiveAvatars.key)
+        addTeardownBlock { @MainActor in UserDefaults.standard.removeObject(forKey: LiveAvatars.key) }
+        let (controller, context, computerID) = try await accounts()
+        let settings = SettingsViewController(context: context, computer: computerID)
+        let (_, window) = try await host(settings)
+        let ids = controller.accounts.map { "account:\($0.id)" }
+        try await until { ids.allSatisfy { settings.shownRow($0)?.image != nil } && settings.agentButton.picture != nil }
+        let switcher = AccountSwitcher(context: context, controller: settings)
+        let button = try XCTUnwrap(switcher.barItem.customView)
+        XCTAssertTrue(Self.lives(in: window).isEmpty, "they move with the setting off")
+        XCTAssertTrue(Self.lives(in: button).isEmpty)
+
+        LiveAvatars.isEnabled = true
+        let index = { (account: AccountSummary) in AvatarPlaceholder.index(seed: ProfilePictures.placeholderSeed(account, context: context)) }
+        let computer = try XCTUnwrap(controller.accounts.first { $0.id == computerID })
+        XCTAssertEqual(Self.lives(in: settings.agentButton).map(\.index), [index(computer)], "the big picture")
+        let shown = Self.lives(in: settings.view).map(\.index)
+        for account in controller.accounts {
+            XCTAssertTrue(shown.contains(index(account)), "\(account.id)'s row doesn't move")
+        }
+        let active = try XCTUnwrap(controller.accounts.first(where: \.isActive))
+        XCTAssertEqual(Self.lives(in: button).map(\.index), [index(active)], "the switcher's button")
+        let header = try XCTUnwrap(Self.lives(in: settings.agentButton).first)
+        try await until { header.drawn && !header.isHidden }
+        XCTAssertEqual(header.frame.size, CGSize(width: AgentEditButtonLayout.Metrics.avatar, height: AgentEditButtonLayout.Metrics.avatar))
+
+        // A real picture is never covered.
+        var pictured = active
+        pictured.avatarURL = URL(string: "https://example.com/a.jpg")
+        XCTAssertNil(ProfilePictures.liveSeed(pictured, context: context))
+        pictured.avatarURL = nil
+        pictured.avatarThumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"
+        XCTAssertNil(ProfilePictures.liveSeed(pictured, context: context))
+
+        LiveAvatars.isEnabled = false
+        XCTAssertTrue(Self.lives(in: window).isEmpty)
+        XCTAssertTrue(Self.lives(in: button).isEmpty)
+        withExtendedLifetime((controller, switcher)) {}
+    }
+
     // MARK: Profile
 
     /// The person without a photo wears their placeholder on the Profile

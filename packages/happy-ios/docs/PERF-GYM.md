@@ -150,6 +150,7 @@ moves. Each workload reports these pairs:
 | `memMB`, `peakMB` | Memory. |
 | `views`, `layers` | The transcript's view and layer count when the workload ends. |
 | `renderCpu`, `appCpu` | CPU seconds over the workload, for the simulator's render server and for the app. |
+| `shaderFrames`, `shaderGpuMean`/`Max`, `shaderCpuMean`/`Max` | The live shaders (the chat header's, Animated Avatars): ticks that drew, the GPU's ms per tick, and the main thread's ms encoding one. They move only with `gym.py run --live-avatars` (`--avatar-fps N` for another rate); without it the header holds one still frame. |
 
 The pairs that cover every frame, not only frames in motion, are prefixed
 `all`.
@@ -188,6 +189,23 @@ Absolute frame times don't. A phone has a slower CPU and a 120 Hz display, so
 treat a hitch here as a larger one there. The budgets are set from simulator
 runs on an M-series Mac. Compare a change against a baseline made on the same
 machine.
+
+### Live shaders (October 2026)
+
+The chat header's three shaders (title capsule, Back, Compose), live, on the
+synthetic long chat (`gym.py run slow-drag fling-to-top --live-avatars`):
+
+| | still | 20 fps | 30 fps |
+| --- | --- | --- | --- |
+| GPU per tick (mean / max, ms) | – | 0.13–0.15 / 0.8 | 0.15 / 1.1 |
+| Main thread per tick (mean / max, ms) | – | 0.18–0.20 / 1.3 | 0.18 / 0.9 |
+| Render server CPU, slow-drag (s over 27.7 s) | 5.0 | 8.7 | 10.9 |
+| App CPU, slow-drag (s) | 1.4 | 1.9 | 2.1 |
+| hitchRatio, dropped | 0, 0 | 0, 0 | 0, 0 |
+
+Frames after a view's first are presented off the main thread
+(`presentsWithTransaction` only for the first): presenting every tick with
+the transaction waited for the GPU on the main thread, up to 188 ms once.
 
 ## Budgets
 
