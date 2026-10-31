@@ -108,6 +108,43 @@ final class HostedSidebarListTests: XCTestCase {
         return (Double(differing) / Double(a.width * a.height), box)
     }
 
+    /// A bot, task or subtask whose work runs sweeps its title, as
+    /// `RowView` does: a running band over the drawn title, across its
+    /// words; a Surface or a row that waits has none, and a row that stops
+    /// working loses its band.
+    func testAWorkingRowSweepsItsTitle() async throws {
+        let (window, root) = try await host(.light)
+        var rows = [
+            Row(id: "bot:busy", nodeId: "bot:busy", kind: .space, label: "Busy bot", mark: .placeholder(seed: "b"), status: .working, agentId: "a-b", targetKind: "bot"),
+            Row(id: "session:sub", nodeId: "session:sub", kind: .session, depth: 1, label: "Busy subtask", status: .working, agentId: "a-s"),
+            Row(id: "task:busy", nodeId: "task:busy", kind: .space, label: "Busy task", mark: .glyph("tasks"), status: .working, agentId: "a-t", targetKind: "task"),
+            Row(id: "bot:wait", nodeId: "bot:wait", kind: .space, label: "Waits", mark: .placeholder(seed: "w"), status: .waiting, agentId: "a-w", targetKind: "bot"),
+        ]
+        var surface = Row(id: "surface:c", nodeId: "surface:c", kind: .space, label: "Calendar", mark: .glyph("calendar"), status: .working, targetKind: "surface")
+        surface.surfaceType = "calendar"
+        rows.append(surface)
+        let list = await list(in: root, rows: rows, frame: window.bounds)
+        for id in ["bot:busy", "session:sub", "task:busy"] {
+            let view = try XCTUnwrap(list.view(for: id), id)
+            let band = try XCTUnwrap(view.titleBand, id)
+            XCTAssertTrue(band.sweeps, id)
+            XCTAssertFalse(band.isHidden, id)
+            XCTAssertNotNil(band.sweepBegan, id)
+            XCTAssertEqual(band.frame, view.frames.label, id)
+            XCTAssertGreaterThan(band.run.width, 0, id)
+            XCTAssertLessThan(band.run.width, view.frames.label.width, "\(id): the band crosses the words, not the column")
+            XCTAssertTrue(view.accessibilityValue?.contains(Strings.workingRow) == true, id)
+        }
+        for id in ["bot:wait", "surface:c"] {
+            XCTAssertNil(try XCTUnwrap(list.view(for: id), id).titleBand, id)
+        }
+        rows[0].status = .waiting
+        list.apply(rows)
+        await list.settle()
+        XCTAssertNil(try XCTUnwrap(list.view(for: "bot:busy")).titleBand)
+        XCTAssertNotNil(try XCTUnwrap(list.view(for: "task:busy")).titleBand)
+    }
+
     /// The same rows, grouped, side by side: the list on UltraList draws what
     /// `SidebarView` drew, to the pixel but for the working signal's frame.
     func testTheListDrawsWhatTheSidebarDrew() async throws {
@@ -274,8 +311,14 @@ final class HostedSidebarListTests: XCTestCase {
         let bottom = list.edge.contentSize.height + list.contentInsets.bottom - list.bounds.height
         for offset in [-list.contentInsets.top, 1300, bottom] {
             list.setContentOffsetY(offset)
-            try await Task.sleep(for: .milliseconds(100))
+            // A far place loads its rows before the list reads it.
+            let deadline = CACurrentMediaTime() + 1
+            while abs(list.contentOffsetY - offset) > 0.5, CACurrentMediaTime() < deadline {
+                try await Task.sleep(for: .milliseconds(16))
+            }
+            await list.settle()
             let before = list.contentOffsetY
+            XCTAssertEqual(before, offset, accuracy: 0.5)
             let anchor = try XCTUnwrap(list.visibleRows.dropFirst().first)
             let place = try y(anchor.id, list, window)
             var updated = rows

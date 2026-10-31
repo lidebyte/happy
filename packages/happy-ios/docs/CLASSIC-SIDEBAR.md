@@ -40,7 +40,10 @@ neither yet, the placeholder its id seeds (`SidebarRows.projectMark`).
 The list is `SidebarList`, on UltraView: `SidebarLayout`'s grouped cards
 cut into one slot per row (`SidebarLayout.slots`), laid out and drawn off
 the main thread (`SidebarItemDrawing`), with the marks, rings, fills and
-signals as live views over the bitmap (`SidebarItemView`). It draws what
+signals as live views over the bitmap (`SidebarItemView`); a working
+bot's, task's or subtask's title keeps `RowView.shimmers`'s sweep as a
+`ShimmerBand` over the drawn title. Rows that change above the screen keep
+the reader's place (`SidebarScrollAnchor`, as `SidebarView` does). It draws what
 the grouped `SidebarView` drew (`HostedSidebarListTests` compares them
 pixel for pixel); `SidebarView` and `RowView` stay for search's
 results, a session's tree and proposals. UltraList is not a scroll view, so

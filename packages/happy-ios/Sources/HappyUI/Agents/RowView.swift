@@ -305,7 +305,7 @@ final class RowView: UIView {
     /// its own name for as long as it runs, under the sheen band in its
     /// own colour. Places are bots and tasks (desktop's project and
     /// workspace rows) and the subtasks under them; a Surface can't be busy.
-    static func shimmers(_ row: Row) -> Bool {
+    nonisolated static func shimmers(_ row: Row) -> Bool {
         guard row.status == .working else { return false }
         switch row.kind {
         case .session: return true

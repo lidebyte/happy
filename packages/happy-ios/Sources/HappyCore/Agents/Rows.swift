@@ -152,11 +152,6 @@ public struct Row: Equatable, Sendable, Identifiable {
     /// A section heading or separator while agent stories are on: drawn at
     /// desktop's own size, as the story rows around it are.
     public var amongStories = false
-    /// The title sweeps desktop's shimmer (`Sidebar.tsx`'s `shimmerLabel`):
-    /// a project or workspace being made, or work under way. Nothing sets
-    /// it yet; home's rows hand their title to whatever draws the sweep
-    /// (`SidebarItemView.titleOverlay`).
-    public var shimmers = false
 
     /// What sidebar v2 draws of a row's stories: its ring's segments and how
     /// many of them are new (none: no ring).

@@ -75,10 +75,43 @@ struct SidebarItemDrawing: Drawing, Equatable {
     /// A row's title in its font and ink (a dynamic colour, resolved where
     /// it is drawn). A story row's keeps one weight: unread is its corner's
     /// to say.
-    var title: NSAttributedString {
+    var title: NSAttributedString { title(UIColor(titleInk)) }
+
+    private var titleInk: ColorToken {
+        selected || row.unread || row.isNew || row.story != nil ? Palette.rowTextActive : Palette.rowText
+    }
+
+    private func title(_ ink: UIColor) -> NSAttributedString {
         let font = row.story != nil ? StoryRowText.titleFont(textScale) : Fonts.ui(row.unread || row.isNew ? .bold : selected ? .semiBold : .medium, size: Metrics.labelSize)
-        let ink = UIColor(selected || row.unread || row.isNew || row.story != nil ? Palette.rowTextActive : Palette.rowText)
         return NSAttributedString(string: row.label, attributes: [.font: font, .foregroundColor: ink])
+    }
+
+    // MARK: Shimmer
+
+    /// A bot, task or subtask whose work runs sweeps its title
+    /// (`RowView.shimmers`): the bitmap draws it as any, and a band over it
+    /// (`ShimmerBand`) wipes a paler copy through the letters.
+    var shimmers: Bool { RowView.shimmers(row) }
+
+    /// How far the title's words run from its frame's left edge: the band
+    /// crosses the words, not the column they sit in.
+    func titleAdvance() -> CGFloat {
+        let measured = title.boundingRect(with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], context: nil)
+        return min(frame.label.width, measured.width.rounded(.up))
+    }
+
+    /// The title again in the sheen band's colour, where it stands in its
+    /// own frame: the copy the band masks. The ground is the card the row
+    /// sits on, lit as the open screen lights it.
+    func drawShimmerCopy(in context: CGContext) {
+        UIGraphicsPushContext(context)
+        defer { UIGraphicsPopContext() }
+        let ground = selected ? Palette.groupedCellHighlight : Palette.groupedCard
+        let band = Shimmer.highlight(.sheen, ink: titleInk, ground: ground)
+        let ink = UIColor(dark ? band.dark : band.light)
+        UITraitCollection(userInterfaceStyle: dark ? .dark : .light).performAsCurrent {
+            Self.drawLine(title(ink), in: CGRect(origin: .zero, size: frame.label.size), scale: displayScale)
+        }
     }
 
     /// `Glyphs.image` at this screen's pixels.

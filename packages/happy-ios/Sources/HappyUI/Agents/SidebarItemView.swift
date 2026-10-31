@@ -49,25 +49,27 @@ final class SidebarItemView: ListRowView {
 
     // MARK: Title
 
-    /// Where the title is drawn, in this view: one line, centred on its
-    /// height and cut at the tail.
-    var titleFrame: CGRect { frames.label }
-    /// The title as the bitmap draws it, in its font and ink, for a view
-    /// laid over it (a shimmer's sweep) to draw the same letters.
-    var titleText: NSAttributedString { item.entry.drawing.title }
-    /// Laid over the title at `titleFrame` and kept there, over the
-    /// bitmap: what `Row.shimmers` sweeps the title with. The bitmap still
-    /// draws the title under it, so it can be taken away at any time.
-    var titleOverlay: UIView? {
-        didSet {
-            guard titleOverlay !== oldValue else { return }
-            oldValue?.removeFromSuperview()
-            if let titleOverlay {
-                titleOverlay.isUserInteractionEnabled = false
-                insertSubview(titleOverlay, aboveSubview: drawingView)
-            }
-            setNeedsLayout()
+    /// The sheen over a working title (`SidebarItemDrawing.shimmers`), at
+    /// the title's frame over the bitmap, which still draws the title under
+    /// it. Its copy is drawn off the main thread.
+    private(set) var titleBand: ShimmerBand?
+
+    private func applyTitleBand(_ entry: SidebarList.Entry, fresh: Bool) {
+        guard let run = entry.titleRun else {
+            titleBand?.removeFromSuperview()
+            titleBand = nil
+            return
         }
+        guard fresh || titleBand == nil else { return }
+        let drawing = entry.drawing
+        let band = ShimmerBand(
+            frame: drawing.frame.label, run: CGRect(x: 0, y: 0, width: run, height: drawing.frame.label.height),
+            scale: drawing.displayScale, draw: { drawing.drawShimmerCopy(in: $0) }
+        )
+        band.accessibilityIdentifier = "shimmer"
+        titleBand?.removeFromSuperview()
+        insertSubview(band, aboveSubview: drawingView)
+        titleBand = band
     }
     override var isDisplayReady: Bool { drawingView.isDisplayReady }
 
@@ -107,6 +109,7 @@ final class SidebarItemView: ListRowView {
         let fresh = next !== item
         item = next
         if fresh { next.node.apply(to: drawingView, transition: transition) }
+        applyTitleBand(next.entry, fresh: fresh)
         selected = next.entry.drawing.selected
         let row = next.entry.row
         let tint = Self.tint(row)
@@ -235,7 +238,7 @@ final class SidebarItemView: ListRowView {
         picture.frame = mark
         tile.frame = mark
         corner.frame = frames.corner ?? .zero
-        titleOverlay?.frame = frames.label
+        titleBand?.frame = frames.label
     }
 
     override func applyPreparation(_ preparation: ListPreparation, width: Double, environment: RenderEnvironment) {
@@ -295,7 +298,7 @@ final class SidebarItemView: ListRowView {
         case .clay(let slug): slug
         default: nil
         }
-        let value = [row.isNew ? Strings.newRow : nil, wears].compactMap { $0 }
+        let value = [row.isNew ? Strings.newRow : nil, wears, item.entry.drawing.shimmers ? Strings.workingRow : nil].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
         if let story = row.story {
             let changes = row.lineChanges.flatMap { $0.isEmpty ? nil : "+\($0.added) \u{2212}\($0.deleted)" }

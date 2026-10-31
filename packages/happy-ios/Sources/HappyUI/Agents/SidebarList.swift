@@ -98,6 +98,8 @@ final class SidebarList: UIView {
         var top: CGFloat
         var drawing: SidebarItemDrawing
         var revision: UInt64
+        /// How far a shimmering title's words run (`SidebarItemDrawing.shimmers`).
+        var titleRun: CGFloat?
     }
 
     struct Prepared: Sendable {
@@ -190,7 +192,12 @@ final class SidebarList: UIView {
         while CACurrentMediaTime() < deadline {
             let ids = prepared?.entries.map(\.row.id) ?? []
             let shown = list.items.map(\.identity) == ids
-            if shown, ids.isEmpty || list.loadedItemViews.allSatisfy(\.isDisplayReady) { return }
+            // A row redrawn takes its new item once it is measured.
+            let current = list.loadedItemViews.allSatisfy { view in
+                guard let view = view as? SidebarItemView else { return true }
+                return items[view.row.id] === view.item
+            }
+            if shown, current, ids.isEmpty || list.loadedItemViews.allSatisfy(\.isDisplayReady) { return }
             try? await Task.sleep(for: .milliseconds(16))
         }
     }
@@ -228,7 +235,7 @@ final class SidebarList: UIView {
                 selected: row.id == input.selected, dark: input.dark, displayScale: input.displayScale,
                 textScale: input.textScale, now: row.story == nil ? .distantPast : now
             )
-            var entry = Entry(row: row, size: slot.frame.size, box: slot.box, top: slot.frame.minY, drawing: drawing, revision: 0)
+            var entry = Entry(row: row, size: slot.frame.size, box: slot.box, top: slot.frame.minY, drawing: drawing, revision: 0, titleRun: drawing.shimmers ? drawing.titleAdvance() : nil)
             if let kept = old[row.id], kept.drawing == drawing, kept.size == entry.size {
                 entry.revision = kept.revision
             } else {
