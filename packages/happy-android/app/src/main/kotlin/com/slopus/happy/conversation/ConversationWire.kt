@@ -235,9 +235,21 @@ data class AgentInfo(
     val updatedAt: Long?,
     val subagentsRunning: Int,
     val subagentsTotal: Int,
+    /** Whether the agent's send route takes the person's messages; absent on older daemons. */
+    val canSendMessages: Boolean? = null,
+    /** A user-interactive subtask its parent manages; absent (false) on older daemons. */
+    val subtask: Boolean? = null,
 ) {
     val isWorking: Boolean get() = status != "idle"
     val isSubagent: Boolean get() = parentAgentId != null
+
+    /**
+     * Whether the person can send here: the agent's own `canSendMessages`,
+     * else the daemon's rule for it (ApiResourceProjection): a root or a
+     * user-interactive subtask, not archived. An internal subagent, driven
+     * by its parent, takes none.
+     */
+    val sendable: Boolean get() = canSendMessages ?: ((parentAgentId == null || subtask == true) && archivedAt == null)
 
     /** `agent.updated` `changes` laid over this copy: present and null clears, absent leaves it. */
     fun merge(changes: JsonObject): AgentInfo = copy(
@@ -248,6 +260,12 @@ data class AgentInfo(
         updatedAt = changes["updatedAt"].long ?: updatedAt,
         subagentsRunning = changes["subagents"].obj?.get("running")?.num?.toInt() ?: subagentsRunning,
         subagentsTotal = changes["subagents"].obj?.get("total")?.num?.toInt() ?: subagentsTotal,
+        // Sent with every archive and restore; from a daemon that doesn't, the fallback answers again.
+        canSendMessages = when {
+            "canSendMessages" in changes -> changes["canSendMessages"].bool
+            "archivedAt" in changes -> null
+            else -> canSendMessages
+        },
     )
 
     companion object {
@@ -265,6 +283,8 @@ data class AgentInfo(
                 updatedAt = o["updatedAt"].long,
                 subagentsRunning = o["subagents"].obj?.get("running")?.num?.toInt() ?: 0,
                 subagentsTotal = o["subagents"].obj?.get("total")?.num?.toInt() ?: 0,
+                canSendMessages = o["canSendMessages"].bool,
+                subtask = o["subtask"].bool,
             )
         }
     }

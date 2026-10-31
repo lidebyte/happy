@@ -57,7 +57,8 @@ import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.Todo
-import com.slopus.happy.ui.artifacts.PlaceLoader
+import com.slopus.happy.ui.artifacts.PlaceTags
+import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.artifacts.PlaceMessage
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.chat.MarkdownView
@@ -208,7 +209,7 @@ fun SurfaceScreen(
 ) {
     PlaceScaffold(name, onBack, AgentPlacesTags.SURFACE) {
         when (read) {
-            PlaceRead.Reading -> PlaceLoader()
+            PlaceRead.Reading -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
             is PlaceRead.Failed -> StatePage(
                 title = stringResource(R.string.agent_surface_failed),
                 body = read.reason,

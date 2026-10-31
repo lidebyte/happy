@@ -413,6 +413,50 @@ class ConversationTest {
         assertFalse(chat.state.value.working)
     }
 
+    @Test fun `a subtask the person can talk to is sendable`() = runTest {
+        val agent = FakeAgent()
+        agent.bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","parentAgentId":"p1","subtask":true,"canSendMessages":true,"status":"idle"},"pending":[]}"""
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertTrue(chat.state.value.canSend)
+    }
+
+    @Test fun `an internal subagent driven by its parent is not sendable`() = runTest {
+        val agent = FakeAgent()
+        agent.bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","parentAgentId":"p1","canSendMessages":false,"status":"idle"},"pending":[]}"""
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertFalse(chat.state.value.canSend)
+    }
+
+    @Test fun `archiving stops sends and restoring brings them back, live`() = runTest {
+        val agent = FakeAgent()
+        agent.bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","parentAgentId":"p1","subtask":true,"canSendMessages":true,"status":"idle"},"pending":[]}"""
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertTrue(chat.state.value.canSend)
+        signals.emit(event("agent.updated", """{"agentId":"a1","changes":{"archivedAt":7,"canSendMessages":false,"updatedAt":7}}"""))
+        advanceUntilIdle()
+        assertFalse(chat.state.value.canSend)
+        signals.emit(event("agent.updated", """{"agentId":"a1","changes":{"archivedAt":null,"canSendMessages":true,"updatedAt":8}}"""))
+        advanceUntilIdle()
+        assertTrue(chat.state.value.canSend)
+    }
+
+    @Test fun `without canSendMessages, the daemon's rule decides`() {
+        fun info(json: String) = AgentInfo.parse(Json.parseToJsonElement(json))!!
+        assertTrue(info("""{"id":"a"}""").sendable)
+        assertTrue(info("""{"id":"a","parentAgentId":"p","subtask":true}""").sendable)
+        assertFalse(info("""{"id":"a","parentAgentId":"p"}""").sendable)
+        assertFalse(info("""{"id":"a","archivedAt":5}""").sendable)
+        assertFalse(info("""{"id":"a","parentAgentId":"p","subtask":true,"archivedAt":5}""").sendable)
+        // The field wins over the fallback either way.
+        assertTrue(info("""{"id":"a","parentAgentId":"p","canSendMessages":true}""").sendable)
+        assertFalse(info("""{"id":"a","canSendMessages":false}""").sendable)
+        // An archive without the field falls back to archivedAt.
+        assertFalse(info("""{"id":"a"}""").merge(Json.parseToJsonElement("""{"archivedAt":5}""").jsonObject).sendable)
+    }
+
     @Test fun `failures read as desktop's card and retry`() = runTest {
         val agent = FakeAgent()
         agent.page = """{"runs":[{"id":"r1","status":"failed","messages":[

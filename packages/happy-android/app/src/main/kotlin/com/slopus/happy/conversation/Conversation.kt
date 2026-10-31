@@ -76,8 +76,8 @@ data class ConversationState(
     val knownTitle: String? = null,
 ) {
     val title: String? get() = agent?.title?.takeIf { it.isNotBlank() } ?: knownTitle?.takeIf { it.isNotBlank() }
-    /** A subagent is driven by its parent: it takes no messages. */
-    val canSend: Boolean get() = agent?.isSubagent != true && agent?.archivedAt == null
+    /** As the agent says ([AgentInfo.sendable]): an internal subagent, driven by its parent, or an archived chat takes no messages. */
+    val canSend: Boolean get() = agent?.sendable != false
 }
 
 /**

@@ -114,7 +114,13 @@ class HomeShots {
         assumeTrue(dir != null)
         dir!!.mkdirs()
         rule.setHappyContent(dark) {
-            com.slopus.happy.ui.settings.SettingsScreen("1.6.0", {}, {}, {}, {})
+            com.slopus.happy.ui.settings.SettingsScreen(
+                profile = com.slopus.happy.ui.settings.SettingsFixtures.profile,
+                about = com.slopus.happy.ui.settings.AboutInfo("1.6.0"),
+                accounts = com.slopus.happy.ui.settings.SettingsFixtures.accounts,
+                accountActions = com.slopus.happy.ui.settings.AccountsCardActions({}, {}),
+                actions = com.slopus.happy.ui.settings.HappySettingsActions(),
+            )
         }
         if (scrolled) rule.onRoot().performTouchInput { swipeUp(startY = centerY, endY = centerY - 300f) }
         save("happy-settings" + (if (dark) "-dark" else "-light") + (if (scrolled) "-scrolled" else ""))

@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.artifacts.ArtifactFile
 import com.slopus.happy.artifacts.ArtifactMedia
 import com.slopus.happy.artifacts.ArtifactMediaItem
@@ -93,7 +94,7 @@ fun ArtifactScreen(title: String, ui: ArtifactUi, media: ArtifactMedia?, compute
     var missing by remember { mutableStateOf(false) }
     PlaceScaffold(title.ifBlank { stringResource(R.string.artifact_untitled) }, actions.onBack, ArtifactTags.SCREEN) {
         when (ui) {
-            ArtifactUi.Loading -> PlaceLoader()
+            ArtifactUi.Loading -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
             is ArtifactUi.Message -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 PlaceMessage(stringResource(if (ui.deleted) R.string.artifact_deleted else R.string.artifact_unavailable))
             }

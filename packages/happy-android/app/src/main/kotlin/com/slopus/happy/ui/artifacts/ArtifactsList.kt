@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.artifacts.ArtifactListing
 import com.slopus.happy.artifacts.ArtifactRef
@@ -142,7 +143,7 @@ fun ArtifactsScreen(
                 action = stringResource(R.string.common_retry) to onRetry,
                 tag = ArtifactsTags.FAILED,
             )
-            read.items.isEmpty() && !read.loaded -> PlaceLoader()
+            read.items.isEmpty() && !read.loaded -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
             read.items.isEmpty() -> StatePage(title = null, body = stringResource(R.string.agent_artifacts_empty), icon = Ionicon.LayersOutline, tag = ArtifactsTags.EMPTY)
             else -> {
                 val untitled = stringResource(R.string.agent_artifacts_untitled)

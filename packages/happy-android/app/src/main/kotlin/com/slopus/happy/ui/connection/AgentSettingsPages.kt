@@ -63,6 +63,7 @@ import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
+import com.slopus.happy.ui.components.ItemList
 import com.slopus.happy.ui.components.ItemSpec
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.settings.SettingsTile
@@ -125,7 +126,7 @@ private fun AgentPage(title: String, onBack: () -> Unit, content: @Composable ()
             )
         },
     ) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) { content() }
+        ItemList { content() }
     }
 }
 

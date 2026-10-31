@@ -43,9 +43,11 @@ import com.slopus.happy.model.HomeEmptyState
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.text.pluralResource
+import com.slopus.happy.ui.components.GlassBarLayout
 import com.slopus.happy.ui.components.HomeCardRow
 import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.connection.AgentHomeSpec
 import com.slopus.happy.ui.connection.AgentTopBar
@@ -143,22 +145,23 @@ fun HomeScreen(
     syncing: Boolean = false,
 ) {
     val colors = HappyTheme.colors
-    Column(modifier = modifier.fillMaxSize().background(colors.surface)) {
-        HomeHeader(connectionStatus, accounts, actions, syncing || state == null)
-        com.slopus.happy.ui.voice.VoiceStatusBar()
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+    // The bar is glass over the page, as agent home's: the cards scroll on under it, softened.
+    GlassBarLayout(
+        modifier = modifier.fillMaxSize().background(colors.surface),
+        ground = colors.surface,
+        bar = {
+            Column {
+                HomeHeader(connectionStatus, accounts, actions, syncing || state == null)
+                com.slopus.happy.ui.voice.VoiceStatusBar()
+            }
+        },
+    ) { top ->
+        Box(modifier = Modifier.fillMaxSize()) {
             val showArchived = { callbacks.onSetArchiveHidden(false) }
+            // Everything but the list is held below the bar; the list starts under it.
+            val below = Modifier.padding(top = top)
             when {
-                state == null -> Box(
-                    modifier = Modifier.fillMaxSize().padding(top = HomeSpec.contentTop, bottom = 32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(
-                        color = colors.textSecondary,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(20.dp).testTag(HomeTags.LOADING),
-                    )
-                }
+                state == null -> LoadingIndicator(below.testTag(HomeTags.LOADING))
                 // No computer linked and nothing to show: say so where home is, with the way to
                 // link one beside it. Home keeps its bar and its account menu, and a cached list is
                 // never replaced by this (resolveHomeEmptyState: sessions win).
@@ -168,17 +171,20 @@ fun HomeScreen(
                     title = stringResource(R.string.onboarding_link_title),
                     body = stringResource(R.string.tablet_install_description),
                     action = stringResource(R.string.onboarding_scan_button) to actions.onLinkComputer,
+                    modifier = below,
                 )
-                state.emptyState == HomeEmptyState.Offline ->
+                state.emptyState == HomeEmptyState.Offline -> Box(below) {
                     offlineContent(state.computers, if (state.hasArchivedSessions) showArchived else null)
-                state.emptyState == HomeEmptyState.NoSessions ->
+                }
+                state.emptyState == HomeEmptyState.NoSessions -> Box(below) {
                     NoSessionsState(onNewSession = actions.onCompose, onShowArchived = if (state.hasArchivedSessions) showArchived else null)
+                }
                 else -> HomeList(
                     state,
                     callbacks,
                     actions,
                     update,
-                    contentTop = HomeCardSpec.contentTop,
+                    contentTop = top + HomeCardSpec.contentTop,
                     listState = listState,
                     // Room for the last card to scroll clear of the compose button.
                     bottomSpacer = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).height(AgentHomeSpec.fabClearance)) },

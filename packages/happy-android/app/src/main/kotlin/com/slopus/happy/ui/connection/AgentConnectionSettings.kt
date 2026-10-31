@@ -37,6 +37,7 @@ import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
+import com.slopus.happy.ui.components.ItemList
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.conversation.openChiefOfStaff
@@ -137,7 +138,7 @@ fun AgentConnectionSettingsScreen(
             )
         },
     ) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        ItemList {
             SettingsHeader(profile, edit)
             AccountsCard(accounts, accountActions)
             ItemGroup {
