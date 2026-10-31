@@ -135,7 +135,8 @@ internal fun ChatHeaderActions(
                 IconButton(onClick = { haptics.light(); open = !open }, modifier = Modifier.testTag(ChatScreenTags.MORE).size(48.dp).semantics { contentDescription = more }) {
                     Icon(Ionicon.EllipsisVertical, 24.dp, colors.header.tint)
                 }
-                if (open) ConversationPopup(
+                ConversationPopup(
+                    expanded = open,
                     title = more,
                     onDismiss = { open = false },
                     alignEnd = true,

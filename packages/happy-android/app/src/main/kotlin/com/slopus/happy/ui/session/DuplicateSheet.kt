@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.session
 
+import com.slopus.happy.ui.components.DialogWindowMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -203,6 +204,7 @@ fun DuplicateSheet(
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        DialogWindowMotion()
         BoxWithConstraints {
             val width = min(DuplicateSheetSpec.maxWidth, maxWidth - DuplicateSheetSpec.margin * 2)
             val shape = RoundedCornerShape(DuplicateSheetSpec.radius)

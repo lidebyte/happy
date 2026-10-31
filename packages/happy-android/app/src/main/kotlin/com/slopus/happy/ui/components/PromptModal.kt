@@ -87,6 +87,7 @@ fun PromptModal(prompt: Prompt, onDismiss: () -> Unit) {
     // Laid out as Material 3's AlertDialog (28 corners, 24 padding, headline, body, actions
     // bottom right) on a plain Dialog: AlertDialog with a text field never settles under test.
     Dialog(onDismissRequest = cancel, properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false)) {
+        DialogWindowMotion()
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,

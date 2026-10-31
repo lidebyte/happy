@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,6 +68,8 @@ object GlassSpec {
     const val ALPHA = 0.85f
     const val FALLBACK_ALPHA = 0.94f
     val hairline = 0.75.dp
+    /** A bar's ground over the blur: thin enough that what scrolls under shows through, softened. */
+    const val BAR_ALPHA = 0.72f
     /** How far above what it backs the fade starts. */
     val fade = 32.dp
 }
@@ -175,6 +178,26 @@ fun Modifier.glassFade(source: GlassSource?, tint: Color, blurs: Boolean): Modif
                 ),
                 blendMode = BlendMode.DstIn,
             )
+        }
+}
+
+/**
+ * A top bar's glass ([GlassBarLayout]): the content under it blurred, then
+ * [ground] over the blur, [GlassSpec.BAR_ALPHA] of it (nearly opaque where
+ * nothing blurs). No edge: at rest the content's own ground is all that is
+ * under the bar, so bar and page are one surface.
+ */
+fun Modifier.glassBar(source: GlassSource?, ground: Color, blurs: Boolean): Modifier = composed {
+    val blurred = rememberGraphicsLayer()
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    onGloballyPositioned { origin = it.positionInRoot() }
+        .drawBehind {
+            if (blurs && source != null && source.recorded) {
+                blurred.recordBlurOf(this, source, origin - source.origin, size)
+                // The blur spreads past the layer's edge: keep it to the bar.
+                clipRect { drawBlurred(blurred) }
+            }
+            drawRect(ground.copy(alpha = if (blurs) GlassSpec.BAR_ALPHA else GlassSpec.FALLBACK_ALPHA))
         }
 }
 

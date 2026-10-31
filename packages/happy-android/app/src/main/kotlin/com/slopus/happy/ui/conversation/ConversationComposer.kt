@@ -289,34 +289,33 @@ internal fun ConversationComposer(
                 }
             }
         }
-        if (menu) {
-            ConversationPopup(
-                title = stringResource(R.string.conversation_composer_more),
-                onDismiss = { menu = false },
-                anchorCenterY = moreCenterY,
-                alignEnd = false,
-                width = 280.dp,
-                modifier = Modifier.testTag(ConversationComposerTags.MENU),
-            ) {
-                LazyColumn {
-                    if (compact && attached.isNotEmpty()) {
-                        item { ComposerPictures(attached, onRemove = { pictures?.remove(it) }) }
-                    }
-                    item {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.image_upload_paste_from_clipboard)) },
-                            onClick = { menu = false; pictures?.paste() },
-                            modifier = Modifier.testTag(ConversationComposerTags.PASTE),
-                        )
-                    }
-                    item {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.conversation_attach_picture)) },
-                            leadingIcon = { Icon(MaterialSymbols.Image, contentDescription = null) },
-                            onClick = { menu = false; pictures?.pick() },
-                            modifier = Modifier.testTag(ConversationComposerTags.ATTACH),
-                        )
-                    }
+        ConversationPopup(
+            expanded = menu,
+            title = stringResource(R.string.conversation_composer_more),
+            onDismiss = { menu = false },
+            anchorCenterY = moreCenterY,
+            alignEnd = false,
+            width = 280.dp,
+            modifier = Modifier.testTag(ConversationComposerTags.MENU),
+        ) {
+            LazyColumn {
+                if (compact && attached.isNotEmpty()) {
+                    item { ComposerPictures(attached, onRemove = { pictures?.remove(it) }) }
+                }
+                item {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.image_upload_paste_from_clipboard)) },
+                        onClick = { menu = false; pictures?.paste() },
+                        modifier = Modifier.testTag(ConversationComposerTags.PASTE),
+                    )
+                }
+                item {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.conversation_attach_picture)) },
+                        leadingIcon = { Icon(MaterialSymbols.Image, contentDescription = null) },
+                        onClick = { menu = false; pictures?.pick() },
+                        modifier = Modifier.testTag(ConversationComposerTags.ATTACH),
+                    )
                 }
             }
         }

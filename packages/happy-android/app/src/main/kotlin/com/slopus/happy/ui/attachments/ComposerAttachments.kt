@@ -82,7 +82,7 @@ fun ComposerAddImageButton() {
     val title = stringResource(R.string.image_upload_attach_title)
     Box(Modifier.onGloballyPositioned { anchorCenterY = it.boundsInWindow().center.y.toInt() }) {
         AddImageButton(attached = picker.images.isNotEmpty(), onClick = { open = !open })
-        if (open) ConversationPopup(title, onDismiss = { open = false }, anchorCenterY = anchorCenterY, alignEnd = false, width = 280.dp) {
+        ConversationPopup(open, title, onDismiss = { open = false }, anchorCenterY = anchorCenterY, alignEnd = false, width = 280.dp) {
             Column(Modifier.testTag(ComposerAttachmentTags.MENU).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 PickerSheetSection("attachments", title, separated = false)
                 AttachmentMenuAction(ComposerAttachmentTags.PASTE, stringResource(R.string.image_upload_paste_from_clipboard)) {

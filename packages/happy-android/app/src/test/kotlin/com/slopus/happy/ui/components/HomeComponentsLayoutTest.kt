@@ -9,6 +9,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -161,7 +164,7 @@ class HomeComponentsLayoutTest {
         assertEquals(null, result)
     }
 
-    // NativeSettingsMenu.android.tsx: "Group: ✓ Option" rows.
+    // NativeSettingsMenu.android.tsx: "Group: Option" rows, the selected one checked.
     @Test
     fun settingsMenuPrefixesTheGroupAndChecksTheSelection() {
         var picked: String? = null
@@ -175,7 +178,9 @@ class HomeComponentsLayoutTest {
                 onDismiss = {},
             ) { Box(Modifier.padding(4.dp)) }
         }
-        rule.onNodeWithText("Group sessions: ✓ Flat list").assertExists()
+        rule.onNodeWithTag(OptionMenuTags.item("grouping", "flat"), useUnmergedTree = true).assertIsSelected()
+        rule.onNodeWithTag(OptionMenuTags.item("grouping", "project"), useUnmergedTree = true).assertIsNotSelected()
+        rule.onNodeWithText("Group sessions: Flat list").assertExists()
         rule.onNodeWithText("Appearance settings").assertExists()
         rule.onNodeWithText("Group sessions: By project").performClick()
         assertEquals("project", picked)

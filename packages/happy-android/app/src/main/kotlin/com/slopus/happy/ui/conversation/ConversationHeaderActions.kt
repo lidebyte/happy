@@ -46,48 +46,47 @@ internal fun ConversationHeaderActions(state: ConversationState, actions: Conver
         ) {
             GlyphIcon(Ionicon.EllipsisVertical, 24.dp, colors.text, contentDescription = stringResource(R.string.conversation_composer_more))
         }
-        when (menu) {
-            HeaderMenu.Actions -> ConversationPopup(
-                title = stringResource(R.string.conversation_composer_more),
-                onDismiss = { menu = null },
-                alignEnd = true,
-                width = 280.dp,
-                belowAnchor = true,
-                modifier = Modifier.testTag(ConversationScreenTags.MENU),
-            ) {
-                LazyColumn {
-                    if (current != null) {
-                        item {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.conversation_mode_permission_item, permissionName(current.permissionMode))) },
-                                leadingIcon = { MaterialIcon(MaterialSymbols.Lock, null) },
-                                onClick = { menu = HeaderMenu.Permissions },
-                                modifier = Modifier.testTag(ConversationModeTags.PERMISSION),
-                            )
-                        }
+        // Both stay composed so each can play its exit; only the open one shows.
+        ConversationPopup(
+            expanded = menu == HeaderMenu.Actions,
+            title = stringResource(R.string.conversation_composer_more),
+            onDismiss = { menu = null },
+            alignEnd = true,
+            width = 280.dp,
+            belowAnchor = true,
+            modifier = Modifier.testTag(ConversationScreenTags.MENU),
+        ) {
+            LazyColumn {
+                if (current != null) {
+                    item {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.conversation_mode_permission_item, permissionName(current.permissionMode))) },
+                            leadingIcon = { MaterialIcon(MaterialSymbols.Lock, null) },
+                            onClick = { menu = HeaderMenu.Permissions },
+                            modifier = Modifier.testTag(ConversationModeTags.PERMISSION),
+                        )
                     }
-                    if (state.created) {
-                        item {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.conversation_details)) },
-                                leadingIcon = { MaterialIcon(MaterialSymbols.Info, null) },
-                                onClick = { menu = null; actions.onDetails() },
-                                modifier = Modifier.testTag(ConversationScreenTags.DETAILS),
-                            )
-                        }
+                }
+                if (state.created) {
+                    item {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.conversation_details)) },
+                            leadingIcon = { MaterialIcon(MaterialSymbols.Info, null) },
+                            onClick = { menu = null; actions.onDetails() },
+                            modifier = Modifier.testTag(ConversationScreenTags.DETAILS),
+                        )
                     }
                 }
             }
-            HeaderMenu.Permissions -> ConversationModePicker(
-                open = ModePicker.Permission,
-                onClose = { menu = null },
-                catalog = state.catalog,
-                mode = state.mode,
-                onModeChange = actions.onModeChange,
-                anchorCenterY = 0,
-                belowAnchor = true,
-            )
-            null -> Unit
         }
+        ConversationModePicker(
+            open = if (menu == HeaderMenu.Permissions) ModePicker.Permission else null,
+            onClose = { menu = null },
+            catalog = state.catalog,
+            mode = state.mode,
+            onModeChange = actions.onModeChange,
+            anchorCenterY = 0,
+            belowAnchor = true,
+        )
     }
 }
