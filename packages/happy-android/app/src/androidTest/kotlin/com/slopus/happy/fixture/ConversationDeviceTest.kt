@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -164,6 +165,43 @@ class ConversationDeviceTest {
         assertTrue("picture back: never returned to the chat", backTo("picture back", ::chatShowing) > 0)
         assertChatInFront("picture back")
         capture("04-picture-back")
+    }
+
+    /**
+     * The photos at the edges their words use (the person's flush right
+     * under the bubble, the agent's flush left), then a picture dragged
+     * halfway (the black half gone) and on down: it goes, and the chat is
+     * back.
+     */
+    @Test fun picture_swipes_away_and_the_chat_is_back() {
+        show()
+        capture("06-pictures-in-chat")
+        val tile = rule.onNodeWithContentDescription("sample.png", useUnmergedTree = true).performScrollTo()
+        tile.performClick()
+        rule.waitUntil(10_000) { rule.onAllNodesWithTag(PictureViewerTags.VIEWER, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        SystemClock.sleep(400)
+        val viewer = rule.onNodeWithTag(PictureViewerTags.VIEWER, useUnmergedTree = true)
+        viewer.performTouchInput {
+            down(center)
+            repeat(10) {
+                advanceEventTime(30)
+                moveBy(androidx.compose.ui.geometry.Offset(0f, height / 40f))
+            }
+        }
+        capture("07-picture-dragged-halfway")
+        viewer.performTouchInput {
+            repeat(5) {
+                advanceEventTime(16)
+                moveBy(androidx.compose.ui.geometry.Offset(0f, height / 20f))
+            }
+            up()
+        }
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(PictureViewerTags.VIEWER, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        assertChatInFront("picture swiped away")
+        capture("08-picture-swiped-away")
+        // The person's own photo, under their words at the right.
+        rule.onNodeWithTag(ConversationScreenTags.LIST, useUnmergedTree = true).performScrollToNode(androidx.compose.ui.test.hasContentDescription("Picture"))
+        capture("09-person-photo")
     }
 
     @Test fun video_hands_off_to_another_app_and_back_returns_to_the_chat() {

@@ -6,18 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -43,6 +39,7 @@ import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.conversation.Block
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.Delivery
+import com.slopus.happy.conversation.MediaFlow
 import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.NoticeKind
 import com.slopus.happy.ui.chat.AgentMessage
@@ -53,12 +50,14 @@ import com.slopus.happy.ui.chat.ToolView
 import com.slopus.happy.ui.chat.UserMessage
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
-import com.slopus.happy.ui.components.RemoteImage
+import com.slopus.happy.ui.components.rememberThumbHash
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
@@ -80,11 +79,8 @@ object ConversationRowSpec {
     val marginVertical = 6.dp
     val cardRadius = 12.dp
     val cardPadding = 12.dp
-    val pictureMaxWidth = 280.dp
-    val pictureMaxHeight = 360.dp
-    val pictureRadius = 8.dp
-    val pictureGap = 4.dp
-    val mediaThumb = 120.dp
+    /** Under a bubble's own 4: its photos 8 under it, as iOS. */
+    val photosGap = 4.dp
     val label = happyTextStyle(fontSize = 13, lineHeight = 18, weight = FontWeight.SemiBold)
     val body = happyTextStyle(fontSize = 14, lineHeight = 20)
     val notice = happyTextStyle(fontSize = 13, lineHeight = 18)
@@ -113,12 +109,20 @@ class ConversationRowActions(
  * tool output stays hidden); the rest are drawn here. Spec: every row here
  * is 16 in from the sides and 6 above and below. Reasoning: an 13/18
  * semibold "Thinking" line with a 16 chevron in textSecondary, opening to
- * the 14/20 text in textSecondary. Pictures: up to 280 wide and 360 high,
- * radius 8, 4 apart. Media: 120 square thumbnails, 4 apart, each read on
- * demand; videos and files are a surfaceHigh card (radius 12, padding 12)
- * naming the file and saying where it opens. Artifacts the same card,
- * with the artifact's title. Another agent's message: "From another agent"
- * (13/18 semibold, textSecondary) over its Markdown. A failure: a
+ * the 14/20 text in textSecondary. Pictures are laid out as iOS lays them
+ * ([MediaFlow], [MediaFlowLayout]), each whole in a tile of its own shape
+ * ([MediaTile]: radius 8, a divider hairline), 8 apart, planned from their
+ * sizes before the bytes come. A person's photos go 8 under their bubble
+ * against the right edge, in at most the bubble's width (36 clear at the
+ * left, never past 560): one alone up to 360 high, several justified up
+ * to 280 high. An agent's, and what a tool presented, from the left edge
+ * at the column's measure: one alone up to 640 high, never past its own
+ * size; several justified up to 480 high, or in the 1 or 2 columns the
+ * tool asked for. Media is read on demand; videos and files are a
+ * surfaceHigh card (radius 12, padding 12) naming the file and saying
+ * where it opens. Artifacts the same card, with the artifact's title.
+ * Another agent's message: "From another agent" (13/18 semibold,
+ * textSecondary) over its Markdown. A failure: a
  * surfaceHigh card with the reason in textDestructive and Retry (13/18
  * semibold, link colour) while it can help, "Retried" once acted on. A
  * notice: 13/18 textSecondary, centred.
@@ -155,7 +159,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             )
             is ConversationRow.Reasoning -> ReasoningRow(row, content)
             is ConversationRow.Picture -> Box(content.fillMaxWidth().padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)) {
-                InlinePicture(row.key, row.image, actions)
+                InlinePictures(row.key, listOf(row.image), actions, MediaFlow.tool, alignEnd = false)
             }
             is ConversationRow.Media -> MediaRow(row, actions, content)
             is ConversationRow.Artifact -> InfoCard(
@@ -202,53 +206,67 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
             sendError = failed?.reason,
         )
     }
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-        if (row.pictures.isNotEmpty()) {
-            FlowRow(
-                modifier = Modifier.padding(horizontal = ConversationRowSpec.marginHorizontal).padding(top = ConversationRowSpec.marginVertical),
-                horizontalArrangement = Arrangement.spacedBy(ConversationRowSpec.pictureGap, Alignment.End),
-                verticalArrangement = Arrangement.spacedBy(ConversationRowSpec.pictureGap),
-            ) {
-                row.pictures.forEachIndexed { index, picture -> InlinePicture("${row.key}:$index", picture, actions) }
-            }
-        }
-        if (row.text.isNotEmpty() || failed != null) {
-            UserMessage(
-                ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), failedLocalId = row.messageId.takeIf { failed != null }),
-                bubble,
-                actions.legacy,
-            )
-        }
+    // The photos go under the words, against the right edge as the bubble is.
+    val photos = @Composable {
+        InlinePictures(row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure)
+    }
+    if (row.text.isNotEmpty() || failed != null) {
+        UserMessage(
+            ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), failedLocalId = row.messageId.takeIf { failed != null }),
+            bubble,
+            actions.legacy,
+            modifier.fillMaxWidth(),
+            attachments = if (row.pictures.isEmpty()) null else {
+                { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos() } }
+            },
+        )
+    } else if (row.pictures.isNotEmpty()) {
+        Box(
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical),
+        ) { photos() }
     }
 }
 
+/** A message's own pictures, read from the bytes it carries: their shapes from their headers, before they decode. */
 @Composable
-private fun InlinePicture(key: String, image: Block.Image, actions: ConversationRowActions) {
-    val bytes = remember(key) {
-        try {
-            Base64.decode(image.data, Base64.DEFAULT)
-        } catch (_: IllegalArgumentException) {
-            null
+private fun InlinePictures(
+    key: String,
+    pictures: List<Block.Image>,
+    actions: ConversationRowActions,
+    limits: MediaFlow.Limits,
+    alignEnd: Boolean,
+    measure: (Float) -> Float = { it },
+) {
+    val decoded = remember(key, pictures) {
+        pictures.map { picture ->
+            val bytes = try {
+                Base64.decode(picture.data, Base64.DEFAULT)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+            bytes to (bytes?.let(::pictureSize) ?: MediaFlow.Image())
         }
     }
-    if (bytes == null) {
-        Text(stringResource(R.string.conversation_picture_failed), style = ConversationRowSpec.notice, color = HappyTheme.colors.textSecondary)
-        return
+    val label = stringResource(R.string.conversation_picture)
+    MediaFlowLayout(
+        images = decoded.map { it.second },
+        limits = limits,
+        alignEnd = alignEnd,
+        measure = measure,
+        modifier = Modifier.testTag(ConversationRowTags.PICTURE),
+    ) { index ->
+        val bytes = decoded[index].first
+        val cacheKey = "conversation/$key:$index"
+        MediaTile(
+            bytes = bytes,
+            cacheKey = cacheKey,
+            contentDescription = label,
+            failed = bytes == null,
+            onClick = bytes?.let { { actions.onOpenPicture(it, cacheKey, null) } },
+        )
     }
-    RemoteImage(
-        model = bytes,
-        cacheKey = "conversation/$key",
-        contentDescription = null,
-        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-        background = HappyTheme.colors.surfaceHigh,
-        modifier = Modifier
-            .testTag(ConversationRowTags.PICTURE)
-            .widthIn(max = ConversationRowSpec.pictureMaxWidth)
-            .heightIn(max = ConversationRowSpec.pictureMaxHeight)
-            .aspectRatio(1f, matchHeightConstraintsFirst = false)
-            .clip(RoundedCornerShape(ConversationRowSpec.pictureRadius))
-            .clickable(role = Role.Button) { actions.onOpenPicture(bytes, "conversation/$key", null) },
-    )
 }
 
 @Composable
@@ -279,15 +297,34 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
     val other = row.items.filter { it.item.kind != "image" }
     Column(
         modifier.fillMaxWidth().padding(vertical = ConversationRowSpec.marginVertical).testTag(ConversationRowTags.MEDIA),
-        verticalArrangement = Arrangement.spacedBy(ConversationRowSpec.pictureGap),
+        verticalArrangement = Arrangement.spacedBy(MediaFlow.GAP.dp),
     ) {
         if (visual.isNotEmpty()) {
-            FlowRow(
+            val loads = visual.map { ref -> key(ref.key) { rememberMediaBytes(ref, actions.loadMedia) } }
+            // As stated, else the hash's shape; a picture that stated no size takes its own once read.
+            val images = visual.mapIndexed { index, ref ->
+                val stated = ref.item.flowImage()
+                val read = loads[index]?.getOrNull()
+                if (MediaFlow.pointSize(stated) == null && read?.size?.width != null) read.size else stated
+            }
+            MediaFlowLayout(
+                images = images,
+                columns = row.columns,
+                limits = MediaFlow.tool,
                 modifier = Modifier.padding(horizontal = ConversationRowSpec.marginHorizontal),
-                horizontalArrangement = Arrangement.spacedBy(ConversationRowSpec.pictureGap),
-                verticalArrangement = Arrangement.spacedBy(ConversationRowSpec.pictureGap),
-            ) {
-                visual.forEach { MediaPicture(it, actions, single = visual.size == 1) }
+            ) { index ->
+                val ref = visual[index]
+                val load = loads[index]
+                val bytes = load?.getOrNull()?.bytes
+                val cacheKey = "conversation/media/${ref.key}"
+                MediaTile(
+                    bytes = bytes,
+                    cacheKey = cacheKey,
+                    contentDescription = ref.item.name.ifEmpty { stringResource(R.string.conversation_picture) },
+                    failed = load?.isFailure == true,
+                    onClick = bytes?.let { { actions.onOpenPicture(it, cacheKey, ref.item.name) } },
+                    placeholder = rememberThumbHash(ref.item.thumbhash),
+                )
             }
         }
         other.forEach { ref ->
@@ -310,42 +347,23 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
     }
 }
 
+/** A presented picture's bytes and the size its header gives. */
+private class MediaBytes(val bytes: ByteArray, val size: MediaFlow.Image)
+
+/** A presented picture's bytes, read once per item while it is shown; null until they come. */
 @Composable
-private fun MediaPicture(ref: MediaRef, actions: ConversationRowActions, single: Boolean) {
-    val load = actions.loadMedia
-    val bytes by produceState<Result<ByteArray>?>(null, ref.key) {
+private fun rememberMediaBytes(ref: MediaRef, load: suspend (MediaRef) -> ByteArray): Result<MediaBytes>? {
+    val bytes by produceState<Result<MediaBytes>?>(null, ref.key) {
         value = try {
-            Result.success(load(ref))
+            val bytes = load(ref)
+            Result.success(MediaBytes(bytes, withContext(Dispatchers.Default) { pictureSize(bytes) }))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
-    val ratio = ref.item.width?.let { w -> ref.item.height?.takeIf { it > 0 }?.let { (w / it).toFloat() } } ?: 1f
-    val size = if (single) Modifier.widthIn(max = ConversationRowSpec.pictureMaxWidth).fillMaxWidth().aspectRatio(ratio.coerceIn(0.5f, 2f))
-    else Modifier.size(ConversationRowSpec.mediaThumb)
-    val shape = RoundedCornerShape(ConversationRowSpec.pictureRadius)
-    val loaded = bytes?.getOrNull()
-    if (loaded != null) {
-        RemoteImage(
-            model = loaded,
-            cacheKey = "conversation/media/${ref.key}",
-            contentDescription = ref.item.name,
-            background = HappyTheme.colors.surfaceHigh,
-            modifier = size
-                .clip(shape)
-                .clickable(role = Role.Button) { actions.onOpenPicture(loaded, "conversation/media/${ref.key}", ref.item.name) },
-        )
-    } else {
-        Box(size.clip(shape).background(HappyTheme.colors.surfaceHigh), contentAlignment = Alignment.Center) {
-            if (bytes?.isFailure == true) {
-                Text(stringResource(R.string.conversation_picture_failed), style = ConversationRowSpec.notice, color = HappyTheme.colors.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.padding(8.dp))
-            } else {
-                Icon(Ionicon.ImageOutline, 24.dp, HappyTheme.colors.textSecondary)
-            }
-        }
-    }
+    return bytes
 }
 
 @Composable

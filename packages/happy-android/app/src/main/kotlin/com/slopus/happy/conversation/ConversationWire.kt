@@ -56,6 +56,10 @@ data class MediaItem(
     val mimeType: String,
     val width: Double? = null,
     val height: Double? = null,
+    /** Pixels per point of a capture (2 for a retina screenshot): it is never drawn past [width] / [scale]. */
+    val scale: Double? = null,
+    /** The picture's ThumbHash, base64: its shape before the bytes come. */
+    val thumbhash: String? = null,
 ) {
     val isVisual: Boolean get() = kind == "image" || kind == "video"
 
@@ -68,6 +72,8 @@ data class MediaItem(
                 mimeType = o["mimeType"].str.orEmpty(),
                 width = o["width"].num,
                 height = o["height"].num,
+                scale = o["scale"].num,
+                thumbhash = o["thumbhash"].str,
             )
         }
     }
@@ -78,7 +84,8 @@ sealed interface Presentation {
     data class Command(val command: String, val output: String?) : Presentation
     data class Exploration(val operations: List<String>) : Presentation
     data class Search(val query: String, val target: String) : Presentation
-    data class Media(val items: List<MediaItem>) : Presentation
+    /** [columns] is the grid the producer asked for (`layout` `{type: "columns", columns}`, 1 or 2), else 0: justified rows. */
+    data class Media(val items: List<MediaItem>, val columns: Int = 0) : Presentation
     data class Artifact(val artifactId: String, val artifactType: String?, val title: String?, val version: Int?) : Presentation
 
     companion object {
@@ -93,10 +100,16 @@ sealed interface Presentation {
                     },
                 )
                 "search" -> Search(o["query"].str ?: return null, o["target"].str ?: "web")
-                "media" -> Media(o["items"].arr.orEmpty().mapNotNull(MediaItem::parse))
+                "media" -> Media(o["items"].arr.orEmpty().mapNotNull(MediaItem::parse), columns(o["layout"]))
                 "artifact" -> Artifact(o["artifactId"].str ?: return null, o["artifactType"].str, o["title"].str, o["version"].num?.toInt())
                 else -> null
             }
+        }
+
+        private fun columns(layout: JsonElement?): Int {
+            val o = layout.obj ?: return 0
+            val columns = o["columns"].num
+            return if (o["type"].str == "columns" && (columns == 1.0 || columns == 2.0)) columns.toInt() else 0
         }
     }
 }

@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import android.util.Base64
 import androidx.test.platform.app.InstrumentationRegistry
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.conversation.AgentRequest
@@ -91,8 +92,11 @@ class FixtureTransport {
         private fun card(id: String, artifactId: String, type: String, title: String) =
             """{"type":"tool_call","id":"$id","name":"create_artifact","status":"completed","presentation":{"type":"artifact","artifactId":"$artifactId","artifactType":"$type","title":"$title","version":1}}"""
 
-        private val PAGE = """{"hasMore":false,"runs":[{"id":"r1","status":"completed","startedAt":1,"messages":[
-            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Show me the samples."}],"metadata":{}},
+        /** The person's message carries one portrait photo, as a phone sends it: inline, base64. */
+        private val PAGE by lazy { page() }
+
+        private fun page() = """{"hasMore":false,"runs":[{"id":"r1","status":"completed","startedAt":1,"messages":[
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Show me the samples."},{"type":"image","mimeType":"image/png","data":"${Base64.encodeToString(portrait(), Base64.NO_WRAP)}"}],"metadata":{}},
             {"id":"m2","role":"agent","createdAt":2,"content":[
                 {"type":"text","text":"Here they are. Every one of these is a test fixture."},
                 {"type":"tool_call","id":"c1","name":"present_files","status":"completed","presentation":{"type":"media","items":[
@@ -124,6 +128,16 @@ class FixtureTransport {
 
         /** A secret request with two synthetic variables; nothing is ever saved from it. */
         const val SECRET_QUESTION = """{"id":"fx-q","status":"pending","context":"The fixture needs a token.","questions":[{"id":"secret","header":"Secret","question":"Fixture token","multiSelect":false,"options":[],"secretRequest":{"suggestedId":"fixture-api","description":"Fixture credentials","environmentVariables":[{"name":"FIXTURE_TOKEN","description":"A made-up token"},{"name":"FIXTURE_ORGANIZATION","description":null}]}}]}"""
+
+        /** A synthetic 300 × 480 portrait, for the person's own photo. */
+        private fun portrait(): ByteArray {
+            val bitmap = Bitmap.createBitmap(300, 480, Bitmap.Config.ARGB_8888)
+            Canvas(bitmap).apply {
+                drawColor(Color.rgb(160, 64, 96))
+                drawText("PHOTO", 70f, 250f, Paint().apply { color = Color.WHITE; textSize = 56f; isAntiAlias = true })
+            }
+            return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        }
 
         private fun picture(): ByteArray {
             val bitmap = Bitmap.createBitmap(640, 400, Bitmap.Config.ARGB_8888)

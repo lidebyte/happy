@@ -176,10 +176,17 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
  * (14, agentEventText) 8 apart at 0.72. Command: its args in a bubble if
  * any, then a chip "/name" (mono 13, input text) with padding 10/2, radius
  * 10, a 1 divider border, at 0.65. Long press opens the Copy menu
- * ([LongPressCopyable]).
+ * ([LongPressCopyable]). [attachments] (a conversation's photos) go under
+ * the body, above the status line, and are not dimmed while pending.
  */
 @Composable
-fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
+fun UserMessage(
+    row: ChatRow.User,
+    bubble: BubblePalette,
+    callbacks: MessageCallbacks,
+    modifier: Modifier = Modifier,
+    attachments: (@Composable () -> Unit)? = null,
+) {
     val message = row.message
     val colors = HappyTheme.colors
     val chat = ChatTheme.colors
@@ -277,6 +284,7 @@ fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCall
                 }
             }
         }
+        attachments?.invoke()
         val failed = row.failedLocalId
         if (failed == null) {
             StatusLine(statusText, if (message.sendError != null) colors.textDestructive else chat.agentEventText)

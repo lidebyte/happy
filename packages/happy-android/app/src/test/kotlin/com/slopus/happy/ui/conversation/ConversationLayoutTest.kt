@@ -453,7 +453,7 @@ class ConversationLayoutTest {
             .toByteArray()
         val data = android.util.Base64.encodeToString(png, android.util.Base64.NO_WRAP)
         show(ConversationState(created = true, loaded = true, rows = rows(Message("p1", "user", 1, listOf(Block.Image("image/png", data)))), agent = agent))
-        rule.node(ConversationRowTags.PICTURE).performClick()
+        rule.node(ConversationMediaTags.TILE).performClick()
         rule.waitForIdle()
         rule.node(PictureViewerTags.IMAGE).assertIsDisplayed()
         shot("picture-viewer")
