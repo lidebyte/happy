@@ -1,5 +1,6 @@
 #if canImport(UIKit) && (DEBUG || HAPPY_FIXTURES)
 import Foundation
+import HappyLayout
 @testable import HappyCore
 @testable import HappyUI
 import UIKit
@@ -45,6 +46,7 @@ final class ChatHeaderHarness {
 
     init(window: UIWindow, arguments: [String]) {
         window.overrideUserInterfaceStyle = arguments.contains("-dark") ? .dark : .light
+        LiveAvatars.isEnabled = arguments.contains("-live")
         let top = arguments.contains("-top")
         let title = arguments.firstIndex(of: "-title").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? "Liquid Glass chat header"
         Task { await open(window: window, top: top, title: title) }

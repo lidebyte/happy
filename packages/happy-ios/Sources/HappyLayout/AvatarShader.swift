@@ -31,6 +31,20 @@ public enum AvatarShader {
     public static let scale: Float = 1
     public static let grain: Float = 0.07
 
+    /// How fast a live placeholder `side` points across moves: its
+    /// clock's rate, 1 the package's own. At the package's rate a row's
+    /// avatar changes about a third as much each second as Settings' large
+    /// one and reads as still, so small ones run at twice it and large
+    /// ones (Settings, Profile, a chat's mark) at one and a half.
+    public static func speed(side: Float) -> Float {
+        side <= 48 ? 2 : 1.5
+    }
+
+    /// The frames a second live placeholders are drawn at. 30 looks the
+    /// same at these speeds and costs the render server about a quarter
+    /// more (docs/PERF-GYM.md).
+    public static let framesPerSecond: Float = 20
+
     /// The parameters of placeholder `index` (as `AvatarPlaceholder`).
     public static func parameters(_ index: Int) -> Parameters {
         table[index]

@@ -108,6 +108,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private var settingsObservation: StoreObservation?
     private var snapshot = SettingsSnapshot()
     private var images: [String: UIImage] = [:]
+    /// The placeholder each account without a picture moves as.
+    private var liveSeeds: [String: String] = [:]
     private var imageKeys: [String: String] = [:]
     private var imageJobs: [String: Task<Void, Never>] = [:]
     private var busy = false
@@ -271,6 +273,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         imageJobs[account.id]?.cancel()
         // What it has now in the first build, the picture when it comes.
         if let placeholder = ProfilePictures.immediate(account, context: context) { images[account.id] = placeholder }
+        liveSeeds[account.id] = ProfilePictures.liveSeed(account, context: context)
         imageJobs[account.id] = Task { [weak self] in
             guard let self else { return }
             let image = await ProfilePictures.load(account, context: context)
@@ -424,6 +427,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 title: profile.name,
                 avatar: true,
                 image: images[profile.id],
+                liveSeed: liveSeeds[profile.id],
                 value: profile.id == shownID ? "✓" : nil,
                 accessory: .none,
                 action: { [weak self] in self?.choose(index) },
@@ -556,7 +560,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func searchRows(_ query: String) -> [SettingsRow] {
         var found: [SettingsRow] = []
         for (index, profile) in profiles.enumerated() where profile.name.localizedCaseInsensitiveContains(query) {
-            found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, avatar: true, image: images[profile.id], value: profile.kind, action: { [weak self] in
+            found.append(SettingsRow(id: "profile:\(profile.id)", title: profile.name, avatar: true, image: images[profile.id], liveSeed: liveSeeds[profile.id], value: profile.kind, action: { [weak self] in
                 self?.choose(index)
             }))
         }
@@ -610,6 +614,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         agentButton.isHidden = searching
         agentButton.editable = profile.isAgentConnection
         agentButton.picture = images[profile.id]
+        agentButton.liveSeed = liveSeeds[profile.id]
         empty.isHidden = !(searching && !(query ?? "").isEmpty && rows.isEmpty)
         name.text = profile.name
         subtitle.text = profile.subtitle
