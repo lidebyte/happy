@@ -112,6 +112,16 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
         return stream
     }
 
+    /**
+     * A raw stream to the agent's socket and the device token that
+     * authenticates on it: the in-app browser's proxy writes its own HTTP
+     * there. The token never leaves native code.
+     */
+    suspend fun socket(): Pair<com.slopus.happy.connection.TransportSocket, String> {
+        val link = link()
+        return link.transport.socket() to link.token
+    }
+
     /** Lets go of the tunnel, so the next request makes a new one. */
     suspend fun reset() = link().transport.reset()
 
