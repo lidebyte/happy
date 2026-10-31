@@ -1,8 +1,5 @@
 package com.slopus.happy.ui.home
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -25,11 +22,9 @@ import com.slopus.happy.model.HomeModelFixtures.session
 import com.slopus.happy.model.NewSessionDraft
 import com.slopus.happy.model.NewSessionLabels
 import com.slopus.happy.model.NewSessionPage
-import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.model.StartPhase
 import com.slopus.happy.model.resolveNewSessionOptions
 import com.slopus.happy.model.settings.AgentDefaultOverrides
-import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.TOLERANCE
@@ -48,8 +43,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import java.time.LocalDate
-import java.time.ZoneOffset
 
 /**
  * The home dock against HomeDock.tsx (Android branch):
@@ -136,50 +129,10 @@ class HomeDockTest {
     private val image = AttachmentPreview("i1", "file:///nowhere/a.jpg", 10, 20, "image/jpeg", 100, "a.jpg")
 
     private fun show(dock: HomeDockState) {
-        val list = deriveHomeList(
-            HomeListInputs(HomeSnapshot(sessions, machines), SessionListGrouping.Flat, true, emptySet(), emptySet(), emptySet()),
-            ZoneOffset.UTC,
-            LocalDate.of(2026, 10, 16),
-        )
-        rule.setHappyContent {
-            HomeScreen(list, ConnectionStatus.CONNECTED, SessionListGrouping.Flat, callbacks, actions, dock = dock, dockActions = dockActions)
-        }
+        rule.setHappyContent { HomeDockFocus(dock, dockActions) }
     }
 
     private val rootBottom get() = rule.onRoot().bounds.bottom
-
-    @Test
-    fun theRestingCapsuleSitsOverTheBottomOfTheList() {
-        show(dock())
-        val capsule = rule.node(HomeDockTags.CAPSULE).bounds
-        assertBox("capsule", capsule, 16.dp, rootBottom - 10.dp - 56.dp, (PHONE_WIDTH - 32).dp, 56.dp)
-        assertDp("text 7 + 21 into the capsule", 16 + 7 + 21, rule.node(HomeDockTags.CAPSULE_TEXT).bounds.left)
-        rule.onNodeWithText("Plan, ask, build…").assertIsDisplayed()
-        val send = rule.node(HomeDockTags.CAPSULE_SEND).bounds
-        assertBox("send", send, (PHONE_WIDTH - 16 - 7 - 42).dp, capsule.top + 7.dp, 42.dp, 42.dp)
-        assertTrue("the list runs on under the dock", rule.node(HomeTags.LIST).bounds.bottom >= capsule.bottom - TOLERANCE)
-    }
-
-    @Test
-    fun sendNeedsTextAndTheTextOpensTheComposer() {
-        var state by mutableStateOf(dock())
-        val list = deriveHomeList(
-            HomeListInputs(HomeSnapshot(sessions, machines), SessionListGrouping.Flat, true, emptySet(), emptySet(), emptySet()),
-            ZoneOffset.UTC,
-            LocalDate.of(2026, 10, 16),
-        )
-        rule.setHappyContent {
-            HomeScreen(list, ConnectionStatus.CONNECTED, SessionListGrouping.Flat, callbacks, actions, dock = state, dockActions = dockActions)
-        }
-        rule.node(HomeDockTags.CAPSULE_SEND).performClick()
-        assertEquals(0, submits)
-        state = dock(prompt = "fix the build")
-        rule.waitForIdle()
-        rule.node(HomeDockTags.CAPSULE_SEND).performClick()
-        assertEquals(1, submits)
-        rule.node(HomeDockTags.CAPSULE_TEXT).performClick()
-        assertEquals(listOf(true), focusChanges)
-    }
 
     @Test
     fun theFocusedDockStacksItsRowsOverTheComposer() {
