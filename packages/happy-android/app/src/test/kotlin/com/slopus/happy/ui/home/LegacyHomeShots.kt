@@ -116,8 +116,10 @@ class LegacyHomeShots {
     @Test fun flatOffline() { show(flat, ConnectionStatus.DISCONNECTED); save("legacy-home-flat-offline") }
     @Test fun projectsLight() { show(projects); save("legacy-home-projects-light") }
 
-    @Test
-    fun composeChat() {
+    @Test fun composeChat() = composeChat(dark = false)
+    @Test fun composeChatDark() = composeChat(dark = true)
+
+    private fun composeChat(dark: Boolean) {
         assumeTrue(dir != null)
         dir!!.mkdirs()
         val graph = AppGraph(
@@ -136,14 +138,15 @@ class LegacyHomeShots {
                 ),
             ),
         )
-        rule.setHappyContent {
+        rule.setHappyContent(dark) {
             val nav = rememberNavController()
             NavHost(nav, startDestination = SessionRoute(newComposeChatId())) { chatRoutes(graph, nav) }
         }
         rule.waitUntil(5_000) { rule.onAllNodes(hasTestTag(ComposeChatTags.TARGET), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         rule.node(ComposerTags.INPUT).performTextInput("Plan the 1.4 release")
-        save("compose-chat")
+        val suffix = if (dark) "-dark" else ""
+        save("compose-chat$suffix")
         rule.node(ComposeChatTags.TARGET).performClick()
-        save("compose-chat-target-menu")
+        save("compose-chat-target-menu$suffix")
     }
 }

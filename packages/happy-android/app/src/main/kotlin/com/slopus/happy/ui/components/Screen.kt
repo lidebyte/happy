@@ -45,9 +45,10 @@ import com.slopus.happy.ui.layout.contentMaxWidth
 
 /**
  * A stack screen: the header on glass over the content
- * ([GlassBarScreen]), on the grouped background, kept clear of the
- * navigation bar. A list that claims the header's room ([ItemList]) runs
- * under it and goes soft behind it; other content starts below it. Only a
+ * ([GlassBarScreen]), on [ground] (the grouped background unless the page
+ * is drawn on another), kept clear of the navigation bar. A list that
+ * claims the header's room ([ItemList], [barInsetTop]) runs under it and
+ * goes soft behind it; other content starts below it. Only a
  * screen with a text field of its own sets [avoidKeyboard] and shrinks above
  * the keyboard; the others stay put when a keyboard opens over them (a
  * dialog's, say).
@@ -57,9 +58,9 @@ fun Screen(
     header: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     avoidKeyboard: Boolean = false,
+    ground: Color = HappyTheme.colors.grouped.background,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val ground = HappyTheme.colors.grouped.background
     GlassBarScreen(header, ground, modifier.fillMaxSize().background(ground)) {
         Box(
             modifier = Modifier
@@ -74,16 +75,11 @@ fun Screen(
  * A pushed screen's header: back arrow and title. Start-aligned, it is the
  * Material top app bar every agent screen has (home's, its settings'): the
  * arrow in the navigation slot on the 16 keyline, the title in Material's
- * title large, held to the content width. On a [Screen] it is glass. A
- * centred title keeps the RN [Header] its screens were drawn for.
+ * title large, held to the content width. On a [Screen] it is glass.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StackHeader(title: String, onBack: () -> Unit, alignment: TitleAlignment = TitleAlignment.Start) {
-    if (alignment == TitleAlignment.Center) {
-        Header(title = title, alignment = alignment, left = { HeaderBackButton(onClick = onBack) })
-        return
-    }
+fun StackHeader(title: String, onBack: () -> Unit) {
     val colors = HappyTheme.colors
     Box(Modifier.fillMaxWidth().then(if (LocalBarOnGlass.current) Modifier else Modifier.background(colors.grouped.background))) {
         TopAppBar(

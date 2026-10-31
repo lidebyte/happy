@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
-import com.slopus.happy.ui.components.TitleAlignment
 import com.slopus.happy.ui.diff.DiffFilesList
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -51,7 +50,7 @@ class ChangesActions(
 
 /**
  * session/[id]/changes.tsx: the session's changes as one scrolling diff,
- * under a plain header titled "View changes" (centred, back). Every file
+ * under the Material bar titled "View changes" (back), on glass. Every file
  * starts collapsed (DiffFilesList `defaultCollapsed`); [scrollToFile]
  * scrolls to one. On the surface colour.
  *
@@ -65,7 +64,7 @@ class ChangesActions(
 @Composable
 fun ChangesScreen(content: ChangesContent, actions: ChangesActions, scrollToFile: String? = null) {
     val colors = HappyTheme.colors
-    Screen(header = { StackHeader(stringResource(R.string.session_info_view_changes), actions.onBack, TitleAlignment.Center) }) {
+    Screen(header = { StackHeader(stringResource(R.string.session_info_view_changes), actions.onBack) }, ground = colors.surface) {
         Box(Modifier.fillMaxSize().background(colors.surface)) {
             when (content) {
                 ChangesContent.Loading -> Spinner()

@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -14,6 +14,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.TransformOrigin
+import com.slopus.happy.ui.components.MenuSpec
+import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.onScreen
 import com.slopus.happy.ui.components.popupMotion
 import com.slopus.happy.ui.components.rememberPopupProgress
@@ -42,6 +44,8 @@ import com.slopus.happy.ui.theme.HappyTheme
  * Back, Escape and keyboard navigation. The popup never requests or clears
  * editor focus, and outside taps dismiss without changing the draft.
  * Header menus use [belowAnchor] to open below their button instead.
+ * The card is every drop-down's ([MenuSpec]): 16 round, white or the
+ * lifted grey with a hairline in dark, 8 of shadow.
  * It comes and goes with [PopupMotion], scaling out of the point nearest
  * its trigger; this form only animates in, as its caller removes it at once.
  */
@@ -73,6 +77,7 @@ internal fun ConversationPopup(
     val state = rememberPopupState(expanded)
     if (!state.onScreen) return
     val progress by rememberPopupProgress(state)
+    val colors = HappyTheme.colors
     val density = LocalDensity.current
     val window = LocalWindowInfo.current.containerSize
     val margin = with(density) { 8.dp.roundToPx() }
@@ -100,9 +105,10 @@ internal fun ConversationPopup(
                 .width(width.coerceAtMost(availableWidth.coerceAtLeast(1.dp)))
                 .heightIn(max = maxHeight)
                 .semantics { paneTitle = title },
-            shape = RoundedCornerShape(24.dp),
-            color = HappyTheme.colors.surface,
-            shadowElevation = 8.dp,
+            shape = MenuSpec.shape,
+            color = MenuSpec.container(colors),
+            shadowElevation = MenuSpec.shadow,
+            border = if (colors.dark) BorderStroke(hairline(), MenuSpec.edge(colors)) else null,
         ) { content() }
     }
 }

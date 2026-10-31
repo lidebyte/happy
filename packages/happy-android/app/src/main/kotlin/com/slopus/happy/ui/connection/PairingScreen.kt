@@ -28,6 +28,7 @@ import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
+import com.slopus.happy.ui.components.barInsetTop
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
@@ -68,6 +69,8 @@ fun PairingScreen(
                 .contentMaxWidth(LocalWindowLayout.current)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
+                // Starts under the glass bar and scrolls on under it.
+                .padding(top = barInsetTop())
                 .padding(horizontal = 24.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),

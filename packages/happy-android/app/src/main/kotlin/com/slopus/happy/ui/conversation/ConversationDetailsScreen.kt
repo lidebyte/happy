@@ -17,8 +17,7 @@ import com.slopus.happy.R
 import com.slopus.happy.conversation.AgentInfo
 import com.slopus.happy.conversation.Mode
 import com.slopus.happy.ui.chat.rememberCopyText
-import com.slopus.happy.ui.components.Header
-import com.slopus.happy.ui.components.HeaderBackButton
+import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
 import com.slopus.happy.ui.components.ItemList
@@ -34,9 +33,9 @@ object ConversationDetailsTags {
 }
 
 /**
- * A conversation's details: the standard header ("Chat details", back) in
- * the grouped background, as the cards sit on,
- * then settings cards (ItemGroup). Conversation: title, status, model,
+ * A conversation's details: the Material top app bar every agent screen
+ * has ("Chat details", back), on glass over the grouped background
+ * ([Screen]), then settings cards (ItemGroup) that scroll on under it. Conversation: title, status, model,
  * effort, permission mode, subtasks running of total, created and updated.
  * Identifiers: the agent and workspace ids, each copied on tap. A
  * subagent says it was started by another agent. Before the agent is read
@@ -46,7 +45,7 @@ object ConversationDetailsTags {
 @Composable
 fun ConversationDetailsScreen(agent: AgentInfo?, mode: Mode?, error: String?, onBack: () -> Unit) {
     val colors = HappyTheme.colors
-    Screen(header = { Header(title = stringResource(R.string.conversation_details), left = { HeaderBackButton(onBack) }, background = colors.grouped.background) }) {
+    Screen(header = { StackHeader(stringResource(R.string.conversation_details), onBack) }) {
         when {
             agent == null && error != null -> Text(
                 error,

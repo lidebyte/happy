@@ -163,12 +163,14 @@ class ChatDockLayoutTest {
         assertTrue("nothing fades", shown(GOAL))
     }
 
-    // SessionView `contentRunsUnderHeader`: the header tints surfaceHigh over older rows on a portrait phone only.
+    // The header is glass over the transcript (GlassBarLayout), not SessionView's surfaceHigh tint: the screen's own colour.
     @Test
     @Config(qualifiers = PHONE)
-    fun aPortraitHeaderTintsOverOlderRows() {
+    fun aPortraitHeaderIsGlassOverOlderRows() {
         show(rowCount = 60, withHint = false)
-        assertEquals(Color(0xFFF8F8F8), headerColor())
+        rule.node(ChatListTags.LIST).performTouchInput { swipeDown() }
+        rule.waitForIdle()
+        assertEquals(Color.White, headerColor())
     }
 
     @Test

@@ -9,15 +9,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -97,9 +94,9 @@ object ChatListSpec {
     /** Below the newest row (the inverted list's top padding). */
     val newestPadding = 8.dp
     val olderStatusHeight = 32.dp
-    /** Beyond the older-end slot in landscape on a phone, where the header doesn't overlap the list. */
+    /** Beyond the older-end slot in landscape on a phone, past the bar's room. */
     val olderInsetLandscape = 12.dp
-    /** On a tablet the spacer is a header, the status bar and this more (OlderEnd's default inset). */
+    /** Beyond the older-end slot on a tablet, past the bar's room (OlderEnd's default: the header, the status bar and this). */
     val olderInsetTabletExtra = 32.dp
     const val MAX_INVISIBLE_OLDER_PAGES = 5
     val footerPaddingTop = 4.dp
@@ -186,7 +183,9 @@ fun olderStatus(blocked: OlderBlock?, hasMoreOlder: Boolean, isLoadingOlder: Boo
  * scrolls back down: 16 above the composer card when the dock floats over
  * the list ([scrollButtonInset], the card's distance from the list's
  * bottom), else 4 above the list's end. [bottomInset] (the floating dock)
- * is added under the newest row so it scrolls clear of the dock.
+ * is added under the newest row so it scrolls clear of the dock, and
+ * [topInset] (the glass bar's room) beyond the oldest, so the list starts
+ * under the bar and scrolls on under it.
  * [onNewestVisibleChange] reports whether the reader is at the newest
  * message: false past 48 from it, true again within 16.
  *
@@ -209,6 +208,7 @@ fun ChatList(
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
     bottomInset: Dp = 0.dp,
+    topInset: Dp = 0.dp,
     scrollButtonInset: Dp? = null,
     onNewestVisibleChange: ((Boolean) -> Unit)? = null,
     sessionId: String = "",
@@ -278,7 +278,7 @@ fun ChatList(
         LazyColumn(
             state = state,
             reverseLayout = true,
-            contentPadding = PaddingValues(bottom = ChatListSpec.newestPadding + bottomInset),
+            contentPadding = PaddingValues(top = topInset, bottom = ChatListSpec.newestPadding + bottomInset),
             modifier = Modifier.testTag(ChatListTags.LIST).fillMaxSize(),
         ) {
             item(key = "footer", contentType = "footer") { ChatFooter(controlledByUser) }
@@ -324,16 +324,17 @@ private const val WORK_HEADER = "workHeader"
 
 /**
  * SessionView's `chatListTopContentInset` as the spacer beyond the oldest
- * row. A phone in portrait runs the list under its 64 header with 52 + 12
- * of inset, which ends where the header does: nothing here, as the list
- * starts below the header. Landscape keeps 12. A tablet passes no inset,
- * so OlderEnd's default holds: the header, the status bar and 32.
+ * row, past the glass bar's room ([ChatList]'s topInset). A phone in
+ * portrait runs the list under its 64 header with 52 + 12 of inset, which
+ * ends where the header does: nothing here. Landscape keeps 12. A tablet
+ * passes no inset, so OlderEnd's default holds: the header and the status
+ * bar (the bar's room), then 32.
  */
 @Composable
 private fun olderInset(): Dp {
     val layout = LocalWindowLayout.current
     return when {
-        layout.isTablet -> layout.headerHeight + WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + ChatListSpec.olderInsetTabletExtra
+        layout.isTablet -> ChatListSpec.olderInsetTabletExtra
         layout.isLandscape -> ChatListSpec.olderInsetLandscape
         else -> 0.dp
     }

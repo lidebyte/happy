@@ -46,7 +46,6 @@ import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
-import com.slopus.happy.ui.components.TitleAlignment
 import com.slopus.happy.ui.onboarding.DESKTOP_URL
 import com.slopus.happy.ui.onboarding.TerminalBlock
 import com.slopus.happy.ui.onboarding.TerminalLine
@@ -131,7 +130,7 @@ fun TroubleshootScreen(
         }
     }
 
-    Screen(header = { StackHeader(stringResource(R.string.troubleshoot_title), onBack, TitleAlignment.Center) }) {
+    Screen(header = { StackHeader(stringResource(R.string.troubleshoot_title), onBack) }) {
         ItemList {
             Column(
                 modifier = Modifier

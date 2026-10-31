@@ -10,10 +10,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -55,6 +51,10 @@ import com.slopus.happy.ui.attachments.attachmentNoticeAlert
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.components.HappyDropdownMenu
+import com.slopus.happy.ui.components.HappyMenuDivider
+import com.slopus.happy.ui.components.HappyMenuItem
+import com.slopus.happy.ui.components.HappyMenuSection
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Prompt
@@ -303,13 +303,18 @@ fun ComposeTarget(compose: ComposeChat, onNewBot: () -> Unit) {
                 )
                 Icon(Ionicon.ChevronDown, 14.dp, colors.textSecondary)
             }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.testTag(ComposeChatTags.TARGET_MENU)) {
+            HappyDropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.testTag(ComposeChatTags.TARGET_MENU)) {
                 TargetMenu(compose, current, onNewBot) { open = false }
             }
         }
     }
 }
 
+/**
+ * The pill's menu, in [HappyDropdownMenu]'s look as the account menu is:
+ * each group under its title, the picked row highlighted and checked,
+ * hairlines between groups.
+ */
 @Composable
 private fun TargetMenu(compose: ComposeChat, options: NewSessionOptions, onNewBot: () -> Unit, close: () -> Unit) {
     val newSession = compose.newSession
@@ -320,13 +325,13 @@ private fun TargetMenu(compose: ComposeChat, options: NewSessionOptions, onNewBo
         close()
         newSession.select(page, key)
     }
-    MenuHeading(pageTitle(NewSessionPage.Machine, options.picksWorkspaces))
+    HappyMenuSection(pageTitle(NewSessionPage.Machine, options.picksWorkspaces))
     for (option in options.machines) MenuOption(NewSessionPage.Machine, option, option.key == options.resolvedMachineId, ::pick)
-    HorizontalDivider()
-    MenuHeading(stringResource(R.string.home_dock_picker_projects))
+    HappyMenuDivider()
+    HappyMenuSection(stringResource(R.string.home_dock_picker_projects))
     for (option in options.projects) MenuOption(NewSessionPage.Project, option, option.key == options.project?.key, ::pick)
-    DropdownMenuItem(
-        text = { Text(customTitle) },
+    HappyMenuItem(
+        label = customTitle,
         onClick = {
             close()
             compose.prompting = Prompt(
@@ -340,14 +345,14 @@ private fun TargetMenu(compose: ComposeChat, options: NewSessionOptions, onNewBo
         modifier = Modifier.testTag(ComposeChatTags.CUSTOM_PATH),
     )
     if (options.agents.size > 1) {
-        HorizontalDivider()
-        MenuHeading(pageTitle(NewSessionPage.Agent, options.picksWorkspaces))
+        HappyMenuDivider()
+        HappyMenuSection(pageTitle(NewSessionPage.Agent, options.picksWorkspaces))
         for (option in options.agents) MenuOption(NewSessionPage.Agent, option, option.key == options.agent.key, ::pick)
     }
     if (options.supportsBots) {
-        HorizontalDivider()
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.compose_chat_new_bot)) },
+        HappyMenuDivider()
+        HappyMenuItem(
+            label = stringResource(R.string.compose_chat_new_bot),
             onClick = {
                 close()
                 newSession.setCreatesBot(true)
@@ -359,24 +364,12 @@ private fun TargetMenu(compose: ComposeChat, options: NewSessionOptions, onNewBo
 }
 
 @Composable
-private fun MenuHeading(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.labelMedium,
-        color = HappyTheme.colors.textSecondary,
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-    )
-}
-
-@Composable
 private fun MenuOption(page: NewSessionPage, option: PickerOption, selected: Boolean, onPick: (NewSessionPage, String) -> Unit) {
-    DropdownMenuItem(
-        text = {
-            Text(option.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        },
-        enabled = !option.disabled,
-        trailingIcon = if (selected) ({ Icon(Ionicon.Checkmark, 20.dp, HappyTheme.colors.text) }) else null,
+    HappyMenuItem(
+        label = option.name,
         onClick = { onPick(page, option.key) },
+        selected = selected,
+        enabled = !option.disabled,
         modifier = Modifier.testTag(ComposeChatTags.option(page, option.key)),
     )
 }

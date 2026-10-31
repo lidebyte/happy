@@ -36,9 +36,9 @@ import java.io.File
 
 /**
  * Menus for review, written only when HAPPY_SHOTS_DIR is set: a stock
- * Material DropdownMenu built as the compose-chat target menu is (so the
- * theme's defaults are what show), the same menu in [HappyDropdownMenu],
- * and the account menu; light and dark.
+ * Material DropdownMenu built as the compose-chat target menu was before it
+ * moved to [HappyDropdownMenu] (so the theme's defaults are what show), the
+ * same menu in [HappyDropdownMenu], and the account menu; light and dark.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)

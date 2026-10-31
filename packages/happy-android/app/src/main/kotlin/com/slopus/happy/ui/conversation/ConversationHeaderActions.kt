@@ -2,10 +2,10 @@ package com.slopus.happy.ui.conversation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon as MaterialIcon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +18,9 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.ui.components.Icon as GlyphIcon
+import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.MenuSpec
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.theme.HappyTheme
 
@@ -56,12 +58,12 @@ internal fun ConversationHeaderActions(state: ConversationState, actions: Conver
             belowAnchor = true,
             modifier = Modifier.testTag(ConversationScreenTags.MENU),
         ) {
-            LazyColumn {
+            LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
                 if (current != null) {
                     item {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.conversation_mode_permission_item, permissionName(current.permissionMode))) },
-                            leadingIcon = { MaterialIcon(MaterialSymbols.Lock, null) },
+                        HappyMenuItem(
+                            label = stringResource(R.string.conversation_mode_permission_item, permissionName(current.permissionMode)),
+                            leading = { MaterialIcon(MaterialSymbols.Lock, null, Modifier.size(MenuSpec.icon)) },
                             onClick = { menu = HeaderMenu.Permissions },
                             modifier = Modifier.testTag(ConversationModeTags.PERMISSION),
                         )
@@ -69,9 +71,9 @@ internal fun ConversationHeaderActions(state: ConversationState, actions: Conver
                 }
                 if (state.created) {
                     item {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.conversation_details)) },
-                            leadingIcon = { MaterialIcon(MaterialSymbols.Info, null) },
+                        HappyMenuItem(
+                            label = stringResource(R.string.conversation_details),
+                            leading = { MaterialIcon(MaterialSymbols.Info, null, Modifier.size(MenuSpec.icon)) },
                             onClick = { menu = null; actions.onDetails() },
                             modifier = Modifier.testTag(ConversationScreenTags.DETAILS),
                         )

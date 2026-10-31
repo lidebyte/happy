@@ -21,7 +21,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -74,6 +73,8 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.GlassColors
 import com.slopus.happy.ui.components.GlassSource
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.components.HappyMenuItem
+import com.slopus.happy.ui.components.MenuSpec
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.glass
@@ -298,21 +299,21 @@ internal fun ConversationComposer(
             width = 280.dp,
             modifier = Modifier.testTag(ConversationComposerTags.MENU),
         ) {
-            LazyColumn {
+            LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
                 if (compact && attached.isNotEmpty()) {
                     item { ComposerPictures(attached, onRemove = { pictures?.remove(it) }) }
                 }
                 item {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.image_upload_paste_from_clipboard)) },
+                    HappyMenuItem(
+                        label = stringResource(R.string.image_upload_paste_from_clipboard),
                         onClick = { menu = false; pictures?.paste() },
                         modifier = Modifier.testTag(ConversationComposerTags.PASTE),
                     )
                 }
                 item {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.conversation_attach_picture)) },
-                        leadingIcon = { Icon(MaterialSymbols.Image, contentDescription = null) },
+                    HappyMenuItem(
+                        label = stringResource(R.string.conversation_attach_picture),
+                        leading = { Icon(MaterialSymbols.Image, contentDescription = null, Modifier.size(MenuSpec.icon)) },
                         onClick = { menu = false; pictures?.pick() },
                         modifier = Modifier.testTag(ConversationComposerTags.ATTACH),
                     )

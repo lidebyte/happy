@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 object GlassBarTags {
     const val BAR = "glassBar.bar"
@@ -43,6 +44,19 @@ fun ClaimBarInset(inset: BarInset) {
         inset.claims++
         onDispose { inset.claims-- }
     }
+}
+
+/**
+ * For a scrolling list on a [GlassBarScreen] (other than [ItemList], which
+ * does this itself): claims the bar's room and returns its height, to lead
+ * the list with, so it starts under the bar and scrolls on under it. 0 off
+ * a glass screen.
+ */
+@Composable
+fun barInsetTop(): Dp {
+    val inset = LocalBarInset.current ?: return 0.dp
+    ClaimBarInset(inset)
+    return inset.top
 }
 
 /**

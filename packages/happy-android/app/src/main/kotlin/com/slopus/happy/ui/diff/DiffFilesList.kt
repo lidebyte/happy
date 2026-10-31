@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.diff.DiffDocument
 import com.slopus.happy.diff.DiffRow
+import com.slopus.happy.ui.components.barInsetTop
 import com.slopus.happy.diff.DiffSource
 import com.slopus.happy.diff.FileChangeKind
 import com.slopus.happy.diff.syntax.SyntaxService
@@ -136,6 +137,7 @@ private class DiffSections(private val scope: CoroutineScope, private val syntax
  * [onRequestContent] is asked for it once per expansion. [scrollToPath]
  * scrolls to that file once, when the list first has it, and tints its
  * section hunkBg. No files: [emptyText] (or "No changes") padded 32.
+ * On a glass screen it starts under the bar ([barInsetTop]).
  */
 @Composable
 fun DiffFilesList(
@@ -260,7 +262,8 @@ fun DiffFilesList(
     LazyColumn(
         state = state,
         modifier = modifier.fillMaxSize().background(palette.surface),
-        contentPadding = PaddingValues(bottom = 32.dp),
+        // On a glass screen the list starts under the bar and scrolls on under it.
+        contentPadding = PaddingValues(top = barInsetTop(), bottom = 32.dp),
         content = content,
     )
 }

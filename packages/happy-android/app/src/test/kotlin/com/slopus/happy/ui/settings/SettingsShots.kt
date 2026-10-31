@@ -6,6 +6,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import com.slopus.happy.ui.node
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentProfileState
 import com.slopus.happy.agent.WireProfile
@@ -91,4 +93,19 @@ class SettingsShots {
     @Test fun agentProfile() = shot("settings-agent-profile") {
         AgentProfileScreen("seed", AgentProfileState(WireProfile(name = "Steve", version = "v1")), null, {}, {}, {}, {})
     }
+
+    /** The picture's menu open over the agent's settings: the pencil badge, then the drop-down. */
+    private fun agentEditMenu(dark: Boolean) {
+        assumeTrue(dir != null)
+        dir!!.mkdirs()
+        rule.setHappyContent(dark) { agent() }
+        rule.node(SettingsPageTags.PICTURE).performClick()
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
+        File(dir, "settings-agent-edit-menu${if (dark) "-dark" else ""}.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test fun agentEditMenuLight() = agentEditMenu(false)
+    @Test fun agentEditMenuDark() = agentEditMenu(true)
 }

@@ -1,7 +1,6 @@
 package com.slopus.happy.ui.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,8 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -24,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -40,12 +36,19 @@ import com.slopus.happy.R
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.Avatar
+import com.slopus.happy.ui.components.GlassColors
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.components.HappyDropdownMenu
+import com.slopus.happy.ui.components.HappyMenuItem
+import com.slopus.happy.ui.components.MenuSpec
+import com.slopus.happy.ui.components.glass
+import com.slopus.happy.ui.components.glassSource
+import com.slopus.happy.ui.components.rememberGlassBlur
+import com.slopus.happy.ui.components.rememberGlassSource
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
-import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
 import com.slopus.happy.ui.theme.HappyTheme
@@ -140,13 +143,16 @@ data class SettingsEditItem(val title: String, val icon: Ionicon, val tag: Strin
  * 100 picture centred 8 under the bar, the name (28 medium) 12 under it and
  * the line (17, secondary) 2 under that, both centred and one line, 24 from
  * the sides. With [edit] the picture wears a 32 pencil badge in its
- * bottom-right corner and a tap on it opens [edit] as a menu
- * (AgentEditButton); without, it is only the picture.
+ * bottom-right corner, round glass over the picture ([glass]), and a tap
+ * on it opens [edit] as a menu (AgentEditButton); without, it is only the
+ * picture.
  */
 @Composable
 fun SettingsHeader(profile: SettingsProfile, edit: List<SettingsEditItem>? = null) {
     val colors = HappyTheme.colors
     var open by remember { mutableStateOf(false) }
+    val picture = rememberGlassSource()
+    val blurs = rememberGlassBlur()
     val label = stringResource(R.string.settings_edit_agent)
     Column(
         modifier = Modifier
@@ -170,26 +176,30 @@ fun SettingsHeader(profile: SettingsProfile, edit: List<SettingsEditItem>? = nul
                     },
                 ),
         ) {
-            Avatar(profile.seed, SettingsPageSpec.picture, imageUri = profile.imageUri, thumbhash = profile.thumbhash, animated = false)
+            Avatar(
+                profile.seed,
+                SettingsPageSpec.picture,
+                modifier = if (edit != null) Modifier.glassSource(picture) else Modifier,
+                imageUri = profile.imageUri,
+                thumbhash = profile.thumbhash,
+                animated = false,
+            )
             if (edit != null) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .size(SettingsPageSpec.badge)
-                        .shadow(2.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(colors.surface)
-                        .border(hairline(), colors.divider, CircleShape)
+                        .glass(picture, CircleShape, GlassColors.of(colors.dark), blurs)
                         .testTag(SettingsPageTags.EDIT),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(Ionicon.Pencil, SettingsPageSpec.pencil, colors.text)
                 }
-                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                HappyDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                     for (item in edit) {
-                        DropdownMenuItem(
-                            text = { Text(item.title) },
-                            leadingIcon = { Icon(item.icon, 20.dp, colors.text) },
+                        HappyMenuItem(
+                            label = item.title,
+                            leading = { Icon(item.icon, MenuSpec.icon, colors.text) },
                             onClick = {
                                 open = false
                                 item.onClick()
@@ -274,10 +284,11 @@ fun AccountsCard(accounts: AccountMenu, actions: AccountsCardActions) {
                     onLongClick = if (removable) { { menu = true } } else null,
                     modifier = Modifier.testTag(SettingsPageTags.account(entry.id)).semantics { selected = entry.active },
                 )
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(if (entry.agent) R.string.modals_disconnect else R.string.settings_account_logout), color = colors.textDestructive) },
-                        leadingIcon = { Icon(Ionicon.LogOutOutline, 20.dp, colors.textDestructive) },
+                HappyDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    HappyMenuItem(
+                        label = stringResource(if (entry.agent) R.string.modals_disconnect else R.string.settings_account_logout),
+                        leading = { Icon(Ionicon.LogOutOutline, MenuSpec.icon, colors.textDestructive) },
+                        destructive = true,
                         onClick = {
                             menu = false
                             confirming = entry
