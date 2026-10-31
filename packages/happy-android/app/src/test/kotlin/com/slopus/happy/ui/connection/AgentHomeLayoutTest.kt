@@ -112,7 +112,7 @@ class AgentHomeLayoutTest {
     private fun feed(bootstrap: JsonObject = sample) = AgentFeed.derive(catalog(bootstrap))
 
     private fun show(feed: AgentFeed, status: AgentLinkStatus = AgentLinkStatus.Connected, dark: Boolean = false) =
-        rule.setHappyContent(dark) { AgentHomeScreen("Studio", feed, status, accounts, actions, now = 1_755_400_000_000L) }
+        rule.setHappyContent(dark) { AgentHomeScreen("Studio", feed, status, accounts, actions) }
 
     @Test
     fun rowsHaveTheirHeightAndNoComposer() {
@@ -186,7 +186,7 @@ class AgentHomeLayoutTest {
         var surface = 0
         rule.setHappyContent(dark = true) {
             surface = com.slopus.happy.ui.theme.HappyTheme.colors.surface.toArgb()
-            AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions, now = 1L)
+            AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions)
         }
         val bar = rule.node(AgentHomeTags.BAR).captureToImage().toPixelMap()
         assertEquals(surface, bar[bar.width / 2, 4].toArgb())
@@ -197,7 +197,7 @@ class AgentHomeLayoutTest {
     @Test
     fun idleUpdatesMoveNoRow() {
         var current by mutableStateOf(feed())
-        rule.setHappyContent { AgentHomeScreen("Studio", current, AgentLinkStatus.Connected, accounts, actions, now = 1L) }
+        rule.setHappyContent { AgentHomeScreen("Studio", current, AgentLinkStatus.Connected, accounts, actions) }
         val before = listOf("agent-ab2", "agent-at1", "agent-at2", "agent-ap1").associateWith { rule.node(AgentHomeTags.row(it)).bounds }
         // Work starts and stops, results come in, a question is asked, a title is generated.
         var catalog = catalog(sample)
@@ -278,7 +278,7 @@ class AgentHomeLayoutTest {
         )
         rule.setHappyContent {
             CompositionLocalProvider(LocalAgentPictures provides pictures) {
-                AgentHomeScreen("Studio", feed(bootstrap), AgentLinkStatus.Connected, accounts, actions, now = NOW)
+                AgentHomeScreen("Studio", feed(bootstrap), AgentLinkStatus.Connected, accounts, actions)
             }
         }
         rule.waitForIdle()
@@ -294,7 +294,7 @@ class AgentHomeLayoutTest {
         val bootstrap = Wire.bootstrap(projects = listOf(Wire.project("p1", "happy", emptyList(), avatarUrl = "/v0/projects/p1/avatar")))
         rule.setHappyContent {
             CompositionLocalProvider(LocalAgentPictures provides pictures) {
-                AgentHomeScreen("Studio", feed(bootstrap), AgentLinkStatus.Connected, accounts, actions, now = NOW)
+                AgentHomeScreen("Studio", feed(bootstrap), AgentLinkStatus.Connected, accounts, actions)
             }
         }
         rule.waitForIdle()
@@ -304,7 +304,7 @@ class AgentHomeLayoutTest {
     @Test
     fun aRowAddedAboveKeepsTheReaderWhereTheyAre() {
         var current by mutableStateOf(feed(big(60)))
-        rule.setHappyContent { AgentHomeScreen("Studio", current, AgentLinkStatus.Connected, accounts, actions, now = 1L) }
+        rule.setHappyContent { AgentHomeScreen("Studio", current, AgentLinkStatus.Connected, accounts, actions) }
         rule.node(AgentHomeTags.LIST).performScrollToIndex(30)
         rule.waitForIdle()
         val anchor = rule.onAllNodesWithTag(AgentHomeTags.LIST, useUnmergedTree = true)[0]
@@ -383,7 +383,7 @@ class AgentHomeLayoutTest {
     fun theLinkDroppingAndComingBackMovesNothing() {
         val rows = feed()
         var status by mutableStateOf(AgentLinkStatus.Connected)
-        rule.setHappyContent { AgentHomeScreen("Studio", rows, status, accounts, actions, now = NOW) }
+        rule.setHappyContent { AgentHomeScreen("Studio", rows, status, accounts, actions) }
         val bar = rule.node(AgentHomeTags.BAR).bounds
         val title = rule.node(AgentHomeTags.TITLE).bounds
         val first = rule.node(AgentHomeTags.row("section-places")).bounds
@@ -441,7 +441,7 @@ class AgentHomeLayoutTest {
         rule.setHappyContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
                 row = AgentHomeSpec.rowHeight()
-                AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions, now = 1L)
+                AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions)
             }
         }
         // The line scales as Android 14 scales it (non-linearly); the paddings don't.

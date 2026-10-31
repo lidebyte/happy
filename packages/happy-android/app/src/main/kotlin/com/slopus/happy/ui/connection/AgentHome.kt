@@ -1,10 +1,14 @@
 package com.slopus.happy.ui.connection
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -32,7 +36,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,7 +54,11 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentLinkStatus
+import com.slopus.happy.ui.components.GlassBarLayout
 import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.LoadingIndicator
+import com.slopus.happy.ui.components.LocalBarOnGlass
+import com.slopus.happy.ui.components.PopupMotion
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
@@ -63,7 +70,6 @@ import com.slopus.happy.ui.home.rememberAccountMenu
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
-import kotlinx.coroutines.delay
 
 /** Everything an agent connection's home asks of the app. */
 @Immutable
@@ -109,7 +115,8 @@ internal fun BarIconButton(icon: Ionicon, label: String, onClick: () -> Unit, mo
  * status bar too) while the bar itself is held to the content width and
  * centred, so on a wide window its controls line up with the rows beneath
  * rather than sitting out at the glass. A no-op on a phone, where the
- * content width is the window ([ContentWidth]).
+ * content width is the window ([ContentWidth]). Inside a [GlassBarLayout]
+ * the colour is the glass's.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -121,7 +128,8 @@ internal fun AgentTopBar(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val layout = LocalWindowLayout.current
-    Box(Modifier.fillMaxWidth().background(container)) {
+    // On glass the glass is the ground ([GlassBarLayout]).
+    Box(Modifier.fillMaxWidth().then(if (LocalBarOnGlass.current) Modifier else Modifier.background(container))) {
         TopAppBar(
             modifier = Modifier.contentMaxWidth(layout).testTag(tag),
             colors = agentBarColors(Color.Transparent),
@@ -151,7 +159,6 @@ fun AgentHomeScreen(
     status: AgentLinkStatus,
     accounts: AccountMenu,
     actions: AgentHomeActions,
-    now: Long = System.currentTimeMillis(),
 ) {
     val colors = HappyTheme.colors
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -178,76 +185,86 @@ fun AgentHomeScreen(
     }
 
     // One ground under the bar and the page, the chat's own (surface), light and dark; the cards sit on it, as on iOS.
+    // The bar is glass over the page: the cards scroll on under it, softened.
     val ground = colors.surface
-    Column(modifier = Modifier.fillMaxSize().background(ground)) {
-        if (searching) {
-            AgentTopBar(
-                tag = AgentHomeTags.BAR,
-                container = ground,
-                navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), closeSearch) },
-                title = { AgentSearchField(query, { query = it }) },
-                actions = {
-                    if (query.isNotEmpty()) {
-                        BarIconButton(Ionicon.Close, stringResource(R.string.agent_search_clear), { query = "" }, Modifier.testTag(AgentSearchTags.CLEAR))
-                    }
-                },
-            )
-        } else {
-            AgentTopBar(
-                tag = AgentHomeTags.BAR,
-                container = ground,
-                navigationIcon = {
-                    Box(Modifier.padding(horizontal = 4.dp)) { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) }
-                },
-                title = { BarTitle(name, status) },
-                actions = {
-                    BarIconButton(Ionicon.SearchOutline, stringResource(R.string.agent_search_open), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
-                    BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
-                },
-            )
-        }
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            when {
-                // Desktop's pictures: the snail while it is read, the wand beside the button that makes the first chat;
-                // offline and removed keep a plain glyph, as desktop's errors do.
-                !feed.loaded && status == AgentLinkStatus.Connecting -> StatePage(
-                    tag = AgentHomeTags.SPINNER,
-                    art = StateArt.Waiting,
-                    title = null,
-                    body = stringResource(R.string.agent_home_connecting, name),
-                )
-                !feed.loaded -> StatePage(
-                    tag = AgentHomeTags.OFFLINE,
-                    icon = if (status == AgentLinkStatus.Offline) Ionicon.CloudOfflineOutline else Ionicon.AlertCircleOutline,
-                    title = when (status) {
-                        AgentLinkStatus.Revoked -> null
-                        AgentLinkStatus.UpdateRequired -> null
-                        else -> stringResource(R.string.agent_home_offline_title, name)
+    GlassBarLayout(
+        modifier = Modifier.fillMaxSize().background(ground),
+        ground = ground,
+        bar = {
+            if (searching) {
+                AgentTopBar(
+                    tag = AgentHomeTags.BAR,
+                    container = ground,
+                    navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), closeSearch) },
+                    title = { AgentSearchField(query, { query = it }) },
+                    actions = {
+                        if (query.isNotEmpty()) {
+                            BarIconButton(Ionicon.Close, stringResource(R.string.agent_search_clear), { query = "" }, Modifier.testTag(AgentSearchTags.CLEAR))
+                        }
                     },
-                    body = statusMessage(status) ?: stringResource(R.string.agent_home_offline_body),
                 )
+            } else {
+                AgentTopBar(
+                    tag = AgentHomeTags.BAR,
+                    container = ground,
+                    navigationIcon = { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) },
+                    title = { BarTitle(name, status) },
+                    actions = {
+                        BarIconButton(Ionicon.SearchOutline, stringResource(R.string.agent_search_open), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
+                        BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
+                    },
+                )
+            }
+        },
+    ) { top ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            val phase = when {
+                !feed.loaded && status == AgentLinkStatus.Connecting -> HomePhase.Loading
+                !feed.loaded -> HomePhase.Offline
                 // Artifacts alone is no home yet: the first chat is.
-                feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts } -> StatePage(
-                    tag = AgentHomeTags.EMPTY,
-                    art = if (statusMessage(status) == null) StateArt.Make else null,
-                    title = stringResource(R.string.agent_home_empty_title),
-                    body = statusMessage(status) ?: stringResource(R.string.agent_home_empty_body),
-                    action = stringResource(R.string.home_compose) to actions.onCompose,
-                )
-                else -> AgentHomeList(
-                    items = items,
-                    state = listState,
-                    now = now,
-                    onOpen = actions.onOpenConversation,
-                    onOpenArtifacts = actions.onOpenArtifacts,
-                    onOpenSurface = actions.onOpenSurface,
-                    contentPadding = PaddingValues(),
-                    header = statusMessage(status)?.let { text ->
-                        { item(key = "banner", contentType = "banner") { Banner(text) } }
-                    },
-                    // Room for the last card to scroll clear of the compose button.
-                    bottom = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance)) },
-                )
+                feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts } -> HomePhase.Empty
+                else -> HomePhase.List
+            }
+            // The loader fades into what comes, and every state into the next.
+            Crossfade(phase, label = "agentHome") { shown ->
+                when (shown) {
+                    HomePhase.Loading -> LoadingIndicator(Modifier.padding(top = top).testTag(AgentHomeTags.SPINNER))
+                    // Offline and removed keep a plain glyph, as desktop's errors do.
+                    HomePhase.Offline -> StatePage(
+                        tag = AgentHomeTags.OFFLINE,
+                        icon = if (status == AgentLinkStatus.Offline) Ionicon.CloudOfflineOutline else Ionicon.AlertCircleOutline,
+                        title = when (status) {
+                            AgentLinkStatus.Revoked -> null
+                            AgentLinkStatus.UpdateRequired -> null
+                            else -> stringResource(R.string.agent_home_offline_title, name)
+                        },
+                        body = statusMessage(status) ?: stringResource(R.string.agent_home_offline_body),
+                        modifier = Modifier.padding(top = top),
+                    )
+                    // Desktop's wand beside the button that makes the first chat.
+                    HomePhase.Empty -> StatePage(
+                        tag = AgentHomeTags.EMPTY,
+                        art = if (statusMessage(status) == null) StateArt.Make else null,
+                        title = stringResource(R.string.agent_home_empty_title),
+                        body = statusMessage(status) ?: stringResource(R.string.agent_home_empty_body),
+                        action = stringResource(R.string.home_compose) to actions.onCompose,
+                        modifier = Modifier.padding(top = top),
+                    )
+                    HomePhase.List -> AgentHomeList(
+                        items = items,
+                        state = listState,
+                        onOpen = actions.onOpenConversation,
+                        onOpenArtifacts = actions.onOpenArtifacts,
+                        onOpenSurface = actions.onOpenSurface,
+                        // The list starts under the glass bar and scrolls on beneath it.
+                        contentPadding = PaddingValues(top = top),
+                        header = statusMessage(status)?.let { text ->
+                            { item(key = "banner", contentType = "banner") { Banner(text) } }
+                        },
+                        // Room for the last card to scroll clear of the compose button.
+                        bottom = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance)) },
+                    )
+                }
             }
             if (feed.loaded && !searching) {
                 // At the end of the content column, so on a tablet it stays with the rows.
@@ -264,8 +281,13 @@ fun AgentHomeScreen(
                     }
                 }
             }
-            if (searching && query.isNotBlank()) {
-                // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
+            // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
+            AnimatedVisibility(
+                visible = searching && query.isNotBlank(),
+                enter = fadeIn(tween(PopupMotion.ENTER_MS)),
+                exit = fadeOut(tween(PopupMotion.EXIT_MS)),
+                modifier = Modifier.padding(top = top),
+            ) {
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -274,7 +296,12 @@ fun AgentHomeScreen(
                         .testTag(AgentSearchTags.SCRIM),
                 )
             }
-            if (searching) {
+            AnimatedVisibility(
+                visible = searching,
+                enter = fadeIn(tween(PopupMotion.ENTER_MS)),
+                exit = fadeOut(tween(PopupMotion.EXIT_MS)),
+                modifier = Modifier.padding(top = top),
+            ) {
                 AgentSearchResults(
                     query = query,
                     results = results,
@@ -287,6 +314,9 @@ fun AgentHomeScreen(
         }
     }
 }
+
+/** What home's page shows under the bar. */
+private enum class HomePhase { Loading, Offline, Empty, List }
 
 /** The quick actions and settings search offers, and where each goes. */
 @Composable
@@ -400,14 +430,6 @@ fun AgentHome(
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
-    // The times in the corners move on once a minute; nothing else does.
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(60_000 - now % 60_000)
-            now = System.currentTimeMillis()
-        }
-    }
     val add = LocalAddFlow.current
     val actions = remember(graph, onOpenConversation, onCompose, onSettings, onAppearance, onOpenArtifacts, onOpenSurface, add) {
         AgentHomeActions(
@@ -428,7 +450,6 @@ fun AgentHome(
             status = status,
             accounts = rememberAccountMenu(graph),
             actions = actions,
-            now = now,
         )
     }
 }

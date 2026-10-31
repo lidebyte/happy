@@ -51,7 +51,7 @@ class AgentHomeShots {
     private fun show(feed: AgentFeed, status: AgentLinkStatus = AgentLinkStatus.Connected, dark: Boolean = false) {
         assumeTrue(dir != null)
         dir!!.mkdirs()
-        rule.setHappyContent(dark) { AgentHomeScreen("Studio", feed, status, accounts, actions, now = 1_755_400_000_000L) }
+        rule.setHappyContent(dark) { AgentHomeScreen("Studio", feed, status, accounts, actions) }
     }
 
     @Test fun listLight() { show(feed); save("home-list-light") }

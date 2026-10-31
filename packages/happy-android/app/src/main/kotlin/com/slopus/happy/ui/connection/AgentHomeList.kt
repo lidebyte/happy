@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -39,7 +38,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,7 +58,6 @@ import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.rememberThumbHash
 import com.slopus.happy.ui.home.BlockedDotColor
 import com.slopus.happy.ui.home.UnreadDotColor
-import com.slopus.happy.ui.home.formatSessionListTimestamp
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
@@ -83,6 +80,7 @@ object AgentHomeTags {
     const val ROW_TITLE = "agentHome.rowTitle"
     const val ROW_MARK = "agentHome.rowMark"
     const val ROW_DIVIDER = "agentHome.rowDivider"
+    const val ROW_DOT = "agentHome.rowDot"
 }
 
 /**
@@ -93,7 +91,7 @@ object AgentHomeTags {
  * hairline between each and the next from where its title starts. A nested
  * row stays in its parent's card, a mark and its gap further in a level.
  * Every row has a fixed height at the font scale ([rowHeight]): nothing an
- * idle update changes (status, unread, time) can move a row. Text is sp and
+ * idle update changes (status, unread) can move a row. Text is sp and
  * overflows its line rather than growing it, as Home's timestamp slot does.
  */
 object AgentHomeSpec {
@@ -115,14 +113,16 @@ object AgentHomeSpec {
     val tileRadius = 8.dp
     val tileGlyph = 18.dp
     val dot = 10.dp
-    val cornerMinWidth = 48.dp
+    /** Between the title and the dot. */
+    val cornerGap = 12.dp
     /** The bar's title, the agent's name: smaller than Material's large title. */
     val barTitle = happyTextStyle(fontSize = 18, lineHeight = 24, weight = FontWeight.SemiBold)
     /** The compose button's margin from the window's corner, and the room under the last card to scroll it clear. */
     val fabMargin = 16.dp
     val fabClearance = 96.dp
     const val TITLE_LINE = 22
-    val title = happyTextStyle(fontSize = 17, lineHeight = TITLE_LINE, weight = FontWeight.Medium)
+    val title = happyTextStyle(fontSize = 17, lineHeight = TITLE_LINE)
+    /** A time at a row's end, where a place lists one (home's rows show none). */
     val timestamp = happyTextStyle(fontSize = 13, lineHeight = TITLE_LINE).copy(fontFeatureSettings = "tnum")
 
     /** 13 + a 22 line + 13: 48 at the default font scale, iOS's row. */
@@ -261,7 +261,6 @@ fun agentHomeItems(feed: AgentFeed): List<AgentHomeItem> {
 /** The rows of [items] into a lazy list, each animating in and out unless motion is reduced. */
 fun LazyListScope.agentHomeRows(
     items: List<AgentHomeItem>,
-    now: Long,
     reduceMotion: Boolean,
     onOpen: (String) -> Unit,
     onOpenArtifacts: () -> Unit,
@@ -282,7 +281,7 @@ fun LazyListScope.agentHomeRows(
             )
             is AgentHomeItem.Row -> CardRow(item, motion) {
                 when (val row = item.row) {
-                    is AgentFeedRow.Conversation -> ConversationRow(row, now, reduceMotion, onOpen)
+                    is AgentFeedRow.Conversation -> ConversationRow(row, reduceMotion, onOpen)
                     is AgentFeedRow.Folder -> FolderRow(row)
                     AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.agent_home_artifacts), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
                     is AgentFeedRow.Surface -> RowTile.surface(row.type).let { (glyph, tile) ->
@@ -348,11 +347,11 @@ private fun titleStart(row: AgentFeedRow): Dp {
 
 /**
  * One conversation, on one line: a bot's or task's 30 mark, the title 17/22
- * (shimmering while it works), and the time or a 10 dot in a 48-minimum
- * corner. The whole row opens it.
+ * (shimmering while it works), and a 10 dot 12 after it while it waits or
+ * is unread. No time. The whole row opens it.
  */
 @Composable
-private fun ConversationRow(row: AgentFeedRow.Conversation, now: Long, reduceMotion: Boolean, onOpen: (String) -> Unit) {
+private fun ConversationRow(row: AgentFeedRow.Conversation, reduceMotion: Boolean, onOpen: (String) -> Unit) {
     val colors = HappyTheme.colors
     val marked = AgentHomeSpec.hasMark(row.kind)
     val title = row.title ?: stringResource(R.string.session_new_chat)
@@ -387,7 +386,7 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, now: Long, reduceMot
                 )
             }
         }
-        Corner(row.activityAt, now, row.blocked, row.unread)
+        Corner(row.blocked, row.unread)
     }
 }
 
@@ -446,37 +445,23 @@ private fun FolderRow(row: AgentFeedRow.Folder) {
     }
 }
 
-/** The time of the last activity, or in its place a dot: orange waiting, blue unread. The slot keeps its width. */
+/**
+ * A dot at the row's end while it needs something: orange waiting, blue
+ * unread; nothing otherwise (home shows no times). The title gives way to
+ * it, on the same line, so the row's height never changes.
+ */
 @Composable
-private fun Corner(activityAt: Long, now: Long, blocked: Boolean, unread: Boolean) {
-    val colors = HappyTheme.colors
-    val stamp = remember(activityAt, now / 60_000) { if (activityAt > 0) formatSessionListTimestamp(activityAt, now) else "" }
-    val dot = blocked || unread
-    val label = when {
-        blocked -> stringResource(R.string.status_input_required)
-        unread -> stringResource(R.string.status_unread)
-        else -> null
-    }
-    Box(
+private fun Corner(blocked: Boolean, unread: Boolean) {
+    if (!blocked && !unread) return
+    val label = stringResource(if (blocked) R.string.status_input_required else R.string.status_unread)
+    StatusDot(
+        color = if (blocked) BlockedDotColor else UnreadDotColor,
+        size = AgentHomeSpec.dot,
         modifier = Modifier
-            .padding(start = 8.dp)
-            .widthIn(min = AgentHomeSpec.cornerMinWidth)
-            .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier),
-        contentAlignment = Alignment.CenterEnd,
-    ) {
-        if (dot) {
-            StatusDot(color = if (blocked) BlockedDotColor else UnreadDotColor, size = AgentHomeSpec.dot)
-        } else {
-            Text(
-                stamp,
-                style = AgentHomeSpec.timestamp,
-                color = colors.textSecondary,
-                textAlign = TextAlign.End,
-                maxLines = 1,
-                modifier = Modifier.wrapContentHeight(unbounded = true),
-            )
-        }
-    }
+            .padding(start = AgentHomeSpec.cornerGap)
+            .semantics { contentDescription = label }
+            .testTag(AgentHomeTags.ROW_DOT),
+    )
 }
 
 /** The list itself; [header] rows (a banner) go above the conversations. */
@@ -484,7 +469,6 @@ private fun Corner(activityAt: Long, now: Long, blocked: Boolean, unread: Boolea
 fun AgentHomeList(
     items: List<AgentHomeItem>,
     state: LazyListState,
-    now: Long,
     onOpen: (String) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
@@ -500,7 +484,7 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, now, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface)
+        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface)
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }
