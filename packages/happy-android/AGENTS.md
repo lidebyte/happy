@@ -849,7 +849,11 @@ is `packages/happy-ios`. The wire keeps its own names
   builds its pinned commit's JVM jar (the same sources as its Android
   variant) into `vendor/maven`, which `settings.gradle.kts` reads for the
   `io.tailcat` group only; the catalog pins the version. When it is
-  published, switch the catalog and delete both.
+  published, switch the catalog and delete both. `tools/tailcat/patches`
+  holds fixes not yet in tailcat-kotlin, applied on top of the commit
+  (the version's `-p<n>`): today tailcat-swift 69a661b's closing-flow
+  limits, without which the in-app browser's short requests run the stack
+  out of connections. Upstream them and drop the patch.
 - **Live check:** `LivePairingTest` pairs with a real Happy Agent
   when `HAPPY_PAIRING_LINK` holds a fresh code, writes the emoji for the
   person confirming in Happy Agent, then reads health and config with the

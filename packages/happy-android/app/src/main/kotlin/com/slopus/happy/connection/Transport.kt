@@ -190,7 +190,8 @@ class TailcatTransport(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            resetIfCurrent(tunnel)
+            // A stack out of connections is busy, not gone: keep the tunnel (and its event stream).
+            if ((e as? io.tailcat.stack.TailcatTransportException)?.reason != io.tailcat.stack.TailcatTransportException.Reason.RESOURCE_LIMIT) resetIfCurrent(tunnel)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         }
         return object : TransportSocket {

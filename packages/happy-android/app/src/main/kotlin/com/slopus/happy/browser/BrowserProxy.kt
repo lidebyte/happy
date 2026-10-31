@@ -71,6 +71,9 @@ class BrowserProxy(parent: CoroutineScope) {
         internal val authorization = basic(username, password)
         private var resolved: Deferred<String>? = null
 
+        /** Keep-alive connections for this page's artifact API, closed with the page. */
+        internal val pool = BrowserConnectionPool({ scope.client.socket() })
+
         /** The workspace the page reaches the web through, asked once; asked again after a failure. */
         internal suspend fun workspace(): String {
             val running = synchronized(this) {
@@ -93,7 +96,10 @@ class BrowserProxy(parent: CoroutineScope) {
             }
         }
 
-        fun close() = remove(this)
+        fun close() {
+            remove(this)
+            pool.stop()
+        }
     }
 
     private val scopeJob = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
@@ -169,6 +175,7 @@ class BrowserProxy(parent: CoroutineScope) {
 
     /** Closes the listener and every connection; for the app's end. */
     fun shutdown() {
+        pages.forEach { it.pool.stop() }
         pages.clear()
         stop()
         scopeJob.cancel()
@@ -214,7 +221,7 @@ class BrowserProxy(parent: CoroutineScope) {
                         if (rest.isNotEmpty()) throw BrowserException(BrowserException.Kind.Malformed)
                         val (inner, body) = BrowserRelay.head(local)
                         BrowserPolicy.checkArtifactOrigin(inner, authority)
-                        artifact(local, scope.client, scope.id, scope.version, inner, body) { started = true }
+                        artifact(local, owner.pool, scope.id, scope.version, inner, body) { started = true }
                     }
                     is Scope.Live if scope.authority == authority -> {
                         local.write(ESTABLISHED)
@@ -223,7 +230,7 @@ class BrowserProxy(parent: CoroutineScope) {
                         val target = inner.line.split(' ').getOrNull(1).orEmpty()
                         if (target.startsWith("/api/")) {
                             BrowserPolicy.checkArtifactOrigin(inner, authority)
-                            artifact(local, scope.client, scope.id, 1, inner, body) { started = true }
+                            artifact(local, owner.pool, scope.id, 1, inner, body) { started = true }
                         } else {
                             forward(local, scope.client, scope.workspaceId, authority, inner, body) { started = true }
                         }
@@ -253,11 +260,11 @@ class BrowserProxy(parent: CoroutineScope) {
             when (val scope = owner.scope) {
                 is Scope.Artifact if scope.authority == authority -> {
                     BrowserPolicy.checkArtifactOrigin(inner, authority)
-                    artifact(local, scope.client, scope.id, scope.version, inner, rest) { started = true }
+                    artifact(local, owner.pool, scope.id, scope.version, inner, rest) { started = true }
                 }
                 is Scope.Live if scope.authority == authority && target.startsWith("/api/") -> {
                     BrowserPolicy.checkArtifactOrigin(inner, authority)
-                    artifact(local, scope.client, scope.id, 1, inner, rest) { started = true }
+                    artifact(local, owner.pool, scope.id, 1, inner, rest) { started = true }
                 }
                 else -> forward(local, owner.scope.client, owner.workspace(), authority, inner, rest) { started = true }
             }
@@ -275,10 +282,17 @@ class BrowserProxy(parent: CoroutineScope) {
      * One request to an artifact's own route, its answer relayed as it
      * comes (SSE included) with the page's sandbox made same-origin. An
      * upgrade stays open both ways.
+     *
+     * An API request (`/api/…`, not an upgrade) leases a keep-alive
+     * connection from the page's [pool]: exactly one framed request per
+     * lease, never pipelined and never retried (a failed write may already
+     * have reached the daemon), and the lease goes back only once its
+     * answer ended exactly where its framing says. Everything else gets a
+     * connection of its own that closes after the answer.
      */
     private suspend fun artifact(
         local: TransportSocket,
-        client: AgentClient,
+        pool: BrowserConnectionPool,
         id: String,
         version: Int,
         head: HttpHead,
@@ -286,18 +300,19 @@ class BrowserProxy(parent: CoroutineScope) {
         onStarted: () -> Unit,
     ) {
         val (request, body) = BrowserRelay.requestBody(head, initial, local)
-        val (remote, token) = try {
-            client.socket()
-        } catch (e: AgentConnectionException) {
-            throw BrowserUpstreamException(e)
-        }
+        val parts = request.line.split(' ')
+        val method = parts.firstOrNull().orEmpty()
+        val api = parts.getOrNull(1)?.startsWith("/api/") == true && request.value("upgrade") == null
+        // Checked before a connection is taken: a refused path costs nothing upstream.
+        request.artifactRequest(id, version, "-", keepAlive = api)
+        val lease = upstream { pool.take(reusing = api) }
+        var reusable = false
         try {
-            val translated = request.artifactRequest(id, version, token)
-            try {
+            val translated = request.artifactRequest(id, version, lease.token, keepAlive = api)
+            val remote = lease.socket
+            upstream {
                 remote.write(translated.bytes)
                 if (body.isNotEmpty()) remote.write(body)
-            } catch (e: AgentConnectionException) {
-                throw BrowserUpstreamException(e)
             }
             var (response, bytes) = upstream { BrowserRelay.head(remote) }
             var interim = 0
@@ -309,13 +324,71 @@ class BrowserProxy(parent: CoroutineScope) {
                 response = next.first
                 bytes = next.second
             }
+            if (response.status == 101) {
+                onStarted()
+                local.write(response.artifactResponse().bytes)
+                if (bytes.isNotEmpty()) local.write(bytes)
+                BrowserRelay.duplex(local, remote)
+                return
+            }
+            val framing = upstream { BrowserResponseBody(response, method) }
             onStarted()
             local.write(response.artifactResponse().bytes)
-            if (bytes.isNotEmpty()) local.write(bytes)
-            if (response.status == 101) BrowserRelay.duplex(local, remote) else respond(remote, local)
+            val complete = relay(remote, local, framing, bytes)
+            reusable = api && complete
         } finally {
-            remote.close()
+            pool.release(lease, reusable)
         }
+    }
+
+    /**
+     * The rest of an answer to the page, as it comes and by its framing,
+     * while watching the page's side: a page that goes away stops the
+     * upstream (an EventSource with nothing to send), and nothing it sends
+     * after its request reaches the daemon. True when the answer ended
+     * exactly where its framing said, so the upstream may carry another.
+     */
+    private suspend fun relay(remote: TransportSocket, local: TransportSocket, framing: BrowserResponseBody, initial: ByteArray): Boolean = coroutineScope {
+        val done = CompletableDeferred<Boolean>()
+        val relay = launch {
+            try {
+                upstream { framing.append(initial) }
+                if (initial.isNotEmpty()) local.write(initial)
+                while (!framing.finished) {
+                    val data = upstream { remote.read(65536) }
+                    if (data.isEmpty()) {
+                        upstream { framing.end() }
+                        done.complete(false)
+                        return@launch
+                    }
+                    upstream { framing.append(data) }
+                    local.write(data)
+                }
+                done.complete(framing.reusable)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                done.completeExceptionally(e)
+            }
+        }
+        val watch = launch {
+            try {
+                local.read(1)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+            done.complete(false)
+        }
+        val reuse = try {
+            done.await()
+        } finally {
+            local.close()
+            relay.cancel()
+            watch.cancel()
+        }
+        if (!reuse) remote.close()
+        reuse
     }
 
     /**
@@ -365,38 +438,6 @@ class BrowserProxy(parent: CoroutineScope) {
         }
     }
 
-    /**
-     * The rest of an answer to the page, while watching the page's side: a
-     * page that goes away stops the upstream (an EventSource with nothing to
-     * send), and nothing it sends after its request reaches the daemon.
-     */
-    private suspend fun respond(remote: TransportSocket, local: TransportSocket) = coroutineScope {
-        val done = CompletableDeferred<Unit>()
-        val relay = launch {
-            try {
-                BrowserRelay.pipe(remote, local)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-            }
-            done.complete(Unit)
-        }
-        val watch = launch {
-            try {
-                while (local.read(65536).isNotEmpty()) Unit
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-            }
-            done.complete(Unit)
-        }
-        done.await()
-        remote.close()
-        local.close()
-        relay.cancel()
-        watch.cancel()
-    }
-
     private suspend fun <T> upstream(block: suspend () -> T): T = try {
         block()
     } catch (e: CancellationException) {
@@ -440,6 +481,10 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
     companion object {
         private fun failure(status: Int, reason: String, code: String) = BrowserFailure(status, reason, "browser_proxy_$code")
 
+        /** Tailcat ran out of connections somewhere under [error] (the transport wraps it). */
+        private fun atCapacity(error: Throwable?): Boolean = generateSequence(error) { it.cause }.take(8)
+            .any { it is io.tailcat.stack.TailcatTransportException && it.reason == io.tailcat.stack.TailcatTransportException.Reason.RESOURCE_LIMIT }
+
         fun of(error: Throwable): BrowserFailure {
             if (error is BrowserUpstreamException) {
                 val cause = error.cause
@@ -449,9 +494,11 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
                         failure(502, "Bad Gateway", "upstream_response_invalid")
                     cause is BrowserException && cause.kind == BrowserException.Kind.Upstream && cause.status in 400..599 ->
                         failure(cause.status, "Upstream Refused", "upstream_refused")
+                    atCapacity(cause) -> failure(503, "Service Unavailable", "upstream_capacity")
                     else -> failure(502, "Bad Gateway", "upstream_transport")
                 }
             }
+            if (atCapacity(error)) return failure(503, "Service Unavailable", "upstream_capacity")
             if (error is BrowserException) {
                 return when (error.kind) {
                     BrowserException.Kind.Forbidden -> failure(403, "Forbidden", "forbidden")
