@@ -47,7 +47,7 @@ final class HostedHeaderBarTests: XCTestCase {
         Row(id: "space:\(index)", nodeId: "n\(index)", kind: .space, label: "Work item \(index)", mark: .glyph(index.isMultiple(of: 2) ? "tasks" : "agents"), agentId: "agent-\(index)", spaceId: "s\(index)")
     }
 
-    private func agentHome(style: UIUserInterfaceStyle) async throws -> (UIWindow, UINavigationController, AgentHomeViewController, SidebarView) {
+    private func agentHome(style: UIUserInterfaceStyle) async throws -> (UIWindow, UINavigationController, AgentHomeViewController, SidebarList) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
             clientID: "ios/test",
@@ -75,8 +75,9 @@ final class HostedHeaderBarTests: XCTestCase {
         let window = hostedKeyWindow(in: scene, root: navigation)
         window.overrideUserInterfaceStyle = style
         window.layoutIfNeeded()
-        let sidebar = try XCTUnwrap(Self.subview(SidebarView.self, in: home.view) { $0.accessibilityIdentifier != "search-results-list" })
+        let sidebar = try XCTUnwrap(Self.subview(SidebarList.self, in: home.view))
         sidebar.apply(Self.rows)
+        await sidebar.settle()
         home.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(200))
         return (window, navigation, home, sidebar)
@@ -84,13 +85,13 @@ final class HostedHeaderBarTests: XCTestCase {
 
     private struct ListState: Equatable {
         var ids: [String]
-        var offset: CGPoint
+        var offset: CGFloat
         var inset: UIEdgeInsets
         var frame: CGRect
     }
 
-    private func state(_ sidebar: SidebarView) -> ListState {
-        ListState(ids: sidebar.rows.map(\.id), offset: sidebar.contentOffset, inset: sidebar.contentInset, frame: sidebar.frame)
+    private func state(_ sidebar: SidebarList) -> ListState {
+        ListState(ids: sidebar.rows.map(\.id), offset: sidebar.contentOffsetY, inset: sidebar.contentInsets, frame: sidebar.frame)
     }
 
     func testAgentHomeBarIsClearWithTheSwitcherAloneAtTheLeft() async throws {
@@ -118,7 +119,7 @@ final class HostedHeaderBarTests: XCTestCase {
             defer { window.isHidden = true }
             keep(window, "home-top-\(name)")
             // Mid-scroll: the case that moved before.
-            sidebar.contentOffset.y = 400
+            sidebar.setContentOffsetY(400)
             home.view.layoutIfNeeded()
             try await Task.sleep(for: .milliseconds(200))
             keep(window, "home-scrolled-\(name)")
@@ -182,8 +183,8 @@ final class HostedHeaderBarTests: XCTestCase {
         for (style, name) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
             let (window, navigation, home, sidebar) = try await agentHome(style: style)
             defer { window.isHidden = true }
-            let row = try XCTUnwrap(sidebar.subviews.compactMap { $0 as? RowView }.first { $0.row?.id == "space:1" })
-            sidebar.tap(row, at: CGPoint(x: row.frame.midX, y: row.frame.midY))
+            let row = try XCTUnwrap(sidebar.view(for: "space:1"))
+            sidebar.tap(row, at: CGPoint(x: row.box.midX, y: row.box.midY))
             try await settle(navigation)
             let chat = try XCTUnwrap(navigation.topViewController as? ChatViewController)
             // Back, the name, and Compose alone: no More menu.

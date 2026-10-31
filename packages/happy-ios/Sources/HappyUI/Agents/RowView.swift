@@ -476,8 +476,8 @@ final class RowView: UIView {
     }
 
     /// A grouped list's heading (iOS's section header): 13, a little tracked.
-    static let groupedHeadingFont = Fonts.ui(.medium, size: GroupedSidebarMetrics.headingSize)
-    static let groupedHeadingTracking: CGFloat = 0.02
+    nonisolated static let groupedHeadingFont = Fonts.ui(.medium, size: GroupedSidebarMetrics.headingSize)
+    nonisolated static let groupedHeadingTracking: CGFloat = 0.02
 
     // MARK: New
 

@@ -24,8 +24,7 @@ public enum SidebarRows {
         }
         // As desktop draws them: a repo wears its own picture when it has one
         // (a cloned repo), and a project without one or a worktree nothing.
-        func folder(_ id: String, _ title: String, depth: Int, kind: String, avatar: DesktopSnapshot.Project.Avatar? = nil) {
-            let mark: Row.Mark = avatar.flatMap { $0.url.hasPrefix("/v0/") ? .image(path: $0.url, thumbhash: nil) : nil } ?? .none
+        func folder(_ id: String, _ title: String, depth: Int, kind: String, mark: Row.Mark = .none) {
             rows.append(Row(id: id, nodeId: id, kind: .space, depth: depth, label: title, mark: mark, targetKind: kind))
         }
         func status(_ agent: AgentWire.Agent) -> Row.Status { Rows.activity(agent) }
@@ -81,7 +80,7 @@ public enum SidebarRows {
             separator("direct:projects")
             let projects = desktop.projects.filter { $0.status != "archived" }.sorted { ($0.orderKey, $0.id) < ($1.orderKey, $1.id) }
             for project in projects {
-                folder("project:\(project.id)", project.name, depth: 0, kind: "project", avatar: project.avatar)
+                folder("project:\(project.id)", project.name, depth: 0, kind: "project", mark: projectMark(project))
                 for agent in project.agents where agent.parentAgentId == nil { agentRow(agent, depth: 1) }
                 let workspaces = desktop.workspaces.filter {
                     $0.projectId == project.id && $0.id != project.id && $0.status != "archived" && $0.status != "archiving" && !descendants.contains($0.id)
@@ -93,6 +92,17 @@ public enum SidebarRows {
             }
         }
         return rows
+    }
+
+    /// A project's face, as desktop's sidebar shows it: its picture (the
+    /// person's or the one the daemon made for it), the house for the home
+    /// project, and while it has neither yet, the placeholder its id seeds.
+    static func projectMark(_ project: DesktopSnapshot.Project) -> Row.Mark {
+        guard let avatar = project.avatar else { return .placeholder(seed: project.id) }
+        if avatar.kind == "home" { return .glyph("home") }
+        if let url = avatar.url, url.hasPrefix("/v0/") { return .image(path: url, thumbhash: avatar.thumbhash) }
+        if avatar.kind == "image" { return .image(path: "/v0/projects/\(AgentClient.escape(project.id))/avatar", thumbhash: avatar.thumbhash) }
+        return .placeholder(seed: project.id)
     }
 
     /// The rows while agent stories are on (`rings` set, keyed by agent):

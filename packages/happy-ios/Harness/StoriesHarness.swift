@@ -750,13 +750,22 @@ final class StoriesHarnessHome: UIViewController, UIScrollViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { stories.listWillBeginDragging() }
     func scrollViewDidScroll(_ scrollView: UIScrollView) { stories.listDidScroll() }
     func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
-        stories.listWillEndDragging(target: targetContentOffset)
+        let velocity = -scrollView.panGestureRecognizer.velocity(in: scrollView).y / 1000
+        var target = targetContentOffset.pointee.y
+        stories.listWillEndDragging(velocity: velocity, target: &target)
+        targetContentOffset.pointee.y = target
     }
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         stories.listDidEndDragging(decelerate: decelerate)
     }
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { stories.listDidEndDecelerating() }
 }
+/// The harness's list is a plain scroll view.
+extension UIScrollView: StoriesList {
+    public var offsetY: CGFloat { contentOffset.y }
+    public var insetTop: CGFloat { contentInset.top }
+}
+
 /// A three second recording made here: colours going round under a
 /// counter, with a 440 Hz tone or no sound track at all.
 enum StoriesHarnessVideo {

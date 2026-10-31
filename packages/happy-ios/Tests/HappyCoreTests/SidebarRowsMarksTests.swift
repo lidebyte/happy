@@ -5,8 +5,9 @@ import HappyWire
 
 /// What the classic list's rows wear, as desktop's sidebar draws them: a
 /// bot or a task without a picture its placeholder (where desktop draws
-/// its glyph), a subtask or a project's session nothing, a cloned repo its
-/// picture and any other project or worktree nothing.
+/// its glyph), a subtask or a project's session nothing, a project its
+/// picture (or the home project its house, or one with neither yet its
+/// placeholder), and a worktree nothing.
 final class SidebarRowsMarksTests: XCTestCase {
     private static let fixture = #"""
     {"cursor":"c1","profile":{"userId":null},"userSettings":[],
@@ -15,7 +16,10 @@ final class SidebarRowsMarksTests: XCTestCase {
         "agents":[{"id":"root","workspaceId":"cloned","title":"Root chat","status":"idle"}]},
        {"id":"adopted","name":"notes","status":"active","orderKey":"b","agents":[]},
        {"id":"elsewhere","name":"site","status":"active","orderKey":"c","avatar":{"url":"https://example.com/a.png","width":1,"height":1},"agents":[]},
-       {"id":"broken","name":"odd","status":"active","orderKey":"d","avatar":"nope","agents":[]}],
+       {"id":"broken","name":"odd","status":"active","orderKey":"d","avatar":"nope","agents":[]},
+       {"id":"chosen","name":"brand","status":"active","orderKey":"e","avatar":{"kind":"image","source":"user","thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"},"agents":[]},
+       {"id":"made","name":"tool","status":"active","orderKey":"f","avatar":{"kind":"image","source":"generated","thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"},"agents":[]},
+       {"id":"home","name":"Home","status":"active","orderKey":"g","avatar":{"kind":"home"},"agents":[]}],
      "workspaces":[{"id":"w1","projectId":"cloned","parentId":"cloned","name":"feature","kind":"worktree","status":"active","orderKey":"a","agents":[]}],
      "bots":[{"id":"research","name":"Research","status":"active","agent":{"id":"research-agent","workspaceId":"r","status":"idle","subtasks":[
         {"id":"sub","workspaceId":"r","parentAgentId":"research-agent","title":"Sub","status":"idle"}]}}],
@@ -38,13 +42,19 @@ final class SidebarRowsMarksTests: XCTestCase {
         XCTAssertEqual(rows["Root chat"]?.mark, Row.Mark.none)
     }
 
-    /// The daemon's picture for a repo it cloned; nothing for one it
-    /// adopted, a picture it doesn't serve, one it can't read, or a worktree.
-    func testARepoWearsItsPictureOnlyWhenItHasOne() throws {
+    /// The daemon's picture, chosen or made, read where it serves it; an
+    /// older daemon's own URL; the house for home; and the placeholder for a
+    /// project with no picture yet, one served elsewhere or one it can't
+    /// read. A worktree wears nothing.
+    func testAProjectAlwaysHasAFace() throws {
         let rows = try rows()
+        XCTAssertEqual(rows["brand"]?.mark, .image(path: "/v0/projects/chosen/avatar", thumbhash: "1QcSHQRnh493V4dIh4eXh1h4kJUI"))
+        XCTAssertEqual(rows["tool"]?.mark, .image(path: "/v0/projects/made/avatar", thumbhash: "HBkSHYSIeHiPiHh8eJd4eTN0EEQG"))
         XCTAssertEqual(rows["happy"]?.mark, .image(path: "/v0/projects/cloned/avatar", thumbhash: nil))
-        for label in ["notes", "site", "odd", "feature"] {
-            XCTAssertEqual(rows[label]?.mark, Row.Mark.none, label)
-        }
+        XCTAssertEqual(rows["Home"]?.mark, .glyph("home"))
+        XCTAssertEqual(rows["notes"]?.mark, .placeholder(seed: "adopted"))
+        XCTAssertEqual(rows["site"]?.mark, .placeholder(seed: "elsewhere"))
+        XCTAssertEqual(rows["odd"]?.mark, .placeholder(seed: "broken"))
+        XCTAssertEqual(rows["feature"]?.mark, Row.Mark.none)
     }
 }

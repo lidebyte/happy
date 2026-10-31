@@ -1,0 +1,362 @@
+#if canImport(UIKit)
+import HappyCore
+import HappyLayout
+import UIKit
+import UltraView
+
+/// One slot of home's list on screen: the row's part of its card, the
+/// bitmap UltraView drew of its text (`SidebarItemDrawing`), and the live
+/// views over it a bitmap can't be: the mark (a tinted tile, a picture
+/// fading in over its thumbhash or placeholder, clay art, a seedling), the
+/// story ring and the working signal. The slot is the list's whole width
+/// and reaches up to the row before it; only the row's box takes a touch.
+///
+/// It looks as `RowView` does in a grouped list: the card's quiet fill,
+/// rounded where the row ends the card, iOS's grey highlight under a
+/// finger and while its screen comes in, a new row's tint and pulse.
+@MainActor
+final class SidebarItemView: ListRowView {
+    private(set) var item: SidebarItem
+    private let fill = UIView()
+    private var drawingView: ListRowView
+    private let ring = StoryRingView()
+    private let tile = UIView()
+    private let seedling = MarkView()
+    private let picture = UIImageView()
+    private let corner = CornerView()
+    private let placeholder = AvatarPlaceholderSlot()
+    private var pictureJob: Task<Void, Never>?
+    /// The mark as last applied, so a row that only changed its title keeps its picture.
+    private var shownMark: (mark: Row.Mark, story: Bool, tint: String?)?
+    /// The finger came down on a list still gliding: it stops the list, and opens nothing.
+    private var stoppedGlide = false
+
+    var row: Row { item.entry.row }
+    /// The row's frames, from the slot's top-left.
+    var frames: SidebarLayout.Frame { item.entry.drawing.frame }
+    /// The row's box, from the slot's top-left.
+    var box: CGRect { item.entry.box }
+    var selected = false {
+        didSet { if selected != oldValue { applyFill() } }
+    }
+    var pressed = false {
+        didSet { if pressed != oldValue { applyFill() } }
+    }
+    /// The story ring, for the viewer to grow out of and close into.
+    var ringView: UIView? { ring.isHidden ? nil : ring }
+    /// What the row wears as its mark, for the viewer's avatar.
+    var markImage: UIImage? { picture.isHidden ? nil : picture.image }
+
+    // MARK: Title
+
+    /// Where the title is drawn, in this view: one line, centred on its
+    /// height and cut at the tail.
+    var titleFrame: CGRect { frames.label }
+    /// The title as the bitmap draws it, in its font and ink, for a view
+    /// laid over it (a shimmer's sweep) to draw the same letters.
+    var titleText: NSAttributedString { item.entry.drawing.title }
+    /// Laid over the title at `titleFrame` and kept there, over the
+    /// bitmap: what `Row.shimmers` sweeps the title with. The bitmap still
+    /// draws the title under it, so it can be taken away at any time.
+    var titleOverlay: UIView? {
+        didSet {
+            guard titleOverlay !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            if let titleOverlay {
+                titleOverlay.isUserInteractionEnabled = false
+                insertSubview(titleOverlay, aboveSubview: drawingView)
+            }
+            setNeedsLayout()
+        }
+    }
+    override var isDisplayReady: Bool { drawingView.isDisplayReady }
+
+    init(item: SidebarItem) {
+        self.item = item
+        drawingView = item.node.makeView()
+        super.init(frame: .zero)
+        fill.isUserInteractionEnabled = false
+        fill.layer.cornerCurve = .continuous
+        drawingView.isUserInteractionEnabled = false
+        drawingView.onDisplayReady = { [weak self] in self?.reportDisplayReady() }
+        picture.clipsToBounds = true
+        picture.layer.cornerCurve = .continuous
+        placeholder.liveHost = picture
+        tile.isUserInteractionEnabled = false
+        tile.layer.cornerRadius = GroupedSidebarMetrics.tileRadius
+        tile.layer.cornerCurve = .continuous
+        for view in [fill, drawingView, ring, tile, seedling, picture, corner] { addSubview(view) }
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+        addGestureRecognizer(tap)
+        let press = PressRecognizer(target: self, action: #selector(pressChanged(_:)))
+        press.delegate = PressRecognizer.simultaneous
+        addGestureRecognizer(press)
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+        hold.minimumPressDuration = 0.5
+        hold.cancelsTouchesInView = false
+        hold.delegate = PressRecognizer.simultaneous
+        addGestureRecognizer(hold)
+        apply(item, transition: .none)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func apply(_ next: SidebarItem, transition: ListTransition) {
+        let previous = item.entry.row
+        // The view was made from `item`'s node: only another one draws anew.
+        let fresh = next !== item
+        item = next
+        if fresh { next.node.apply(to: drawingView, transition: transition) }
+        selected = next.entry.drawing.selected
+        let row = next.entry.row
+        let tint = Self.tint(row)
+        if shownMark.map({ $0.mark != row.mark || $0.story != (row.story != nil) || $0.tint != tint?.key }) ?? true {
+            applyMark(row, tint: tint)
+            if case .seedling(let seed) = previous.mark, case .clay(let slug) = row.mark, previous.id == row.id,
+               let image = ClayIconImages.image(slug) { hatch(seed: seed, into: image) }
+        }
+        tile.backgroundColor = tint.map { UIColor($0.fill) }
+        picture.tintColor = picture.contentMode == .center ? tint.map { UIColor($0.ink) } ?? UIColor(ink(row)) : nil
+        ring.isHidden = row.story == nil || row.mark == .none
+        ring.apply(row.story ?? .init())
+        ring.accessibilityIdentifier = "ring:\(row.label)"
+        corner.apply(row.story == nil && row.status != .working ? .none : row.corner)
+        corner.accessibilityIdentifier = "corner:\(row.label)"
+        applyFill()
+        applyAccessibility()
+        if row.isNew, !previous.isNew || previous.id != row.id, window != nil { pulse() }
+        setNeedsLayout()
+    }
+
+    // MARK: Look
+
+    private func ink(_ row: Row) -> ColorToken {
+        selected || row.unread || row.isNew || row.story != nil ? Palette.rowTextActive : Palette.rowText
+    }
+
+    /// The fill: the card's own until a finger or the open screen lights
+    /// it; a heading stands on the ground.
+    private func applyFill() {
+        let row = row
+        let carryable = row.kind != .section && row.kind != .separator
+        let tinted = row.isNew && row.story == nil
+        let rest: UIColor = carryable ? UIColor(Palette.groupedCard) : .clear
+        fill.backgroundColor = selected || pressed && carryable ? UIColor(Palette.groupedCellHighlight) : tinted ? UIColor(Palette.rowNew) : rest
+        var corners: CACornerMask = []
+        if frames.cell?.roundsTop == true { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
+        if frames.cell?.roundsBottom == true { corners.formUnion([.layerMinXMaxYCorner, .layerMaxXMaxYCorner]) }
+        fill.layer.cornerRadius = corners.isEmpty ? 0 : GroupedSidebarMetrics.radius
+        fill.layer.maskedCorners = corners
+    }
+
+    /// A glyph's tile, by what the row opens (`RowView.tint`), with a key to tell them apart.
+    private static func tint(_ row: Row) -> (key: String, ink: ColorToken, fill: ColorToken)? {
+        guard row.story == nil, let tint = RowView.tint(row) else { return nil }
+        return ("\(row.targetKind ?? "")|\(row.surfaceType ?? "")", tint.ink, tint.fill)
+    }
+
+    /// The mark, as a grouped `RowView` wears it.
+    private func applyMark(_ row: Row, tint: (key: String, ink: ColorToken, fill: ColorToken)?) {
+        shownMark = (row.mark, row.story != nil, tint?.key)
+        pictureJob?.cancel(); pictureJob = nil
+        placeholder.cancel()
+        seedling.seed = nil
+        seedling.isHidden = true
+        picture.isHidden = true
+        picture.image = nil
+        picture.contentMode = .scaleAspectFit
+        picture.layer.cornerRadius = 0
+        tile.isHidden = tint == nil
+        let story = row.story != nil
+        let radius = story ? StoryRowMetrics.disc / 2 : GroupedSidebarMetrics.tileRadius
+        switch row.mark {
+        case .none:
+            break
+        case .glyph(let name) where tint != nil:
+            picture.isHidden = false
+            picture.contentMode = .center
+            picture.image = Glyphs.image(name, size: GroupedSidebarMetrics.tileGlyph)
+        case .seedling(let seed):
+            seedling.isHidden = false
+            seedling.seed = seed
+        case .happy:
+            picture.isHidden = false
+            picture.image = ClayIconImages.happy
+        case .clay(let slug):
+            // Clay art stands as drawn: no frame, no rounding.
+            picture.isHidden = false
+            picture.image = ClayIconImages.image(slug)
+        case .glyph(let name):
+            picture.isHidden = false
+            picture.contentMode = .center
+            picture.image = Glyphs.image(name, size: Metrics.glyph)
+        case .placeholder(let seed):
+            picture.isHidden = false
+            picture.contentMode = .scaleAspectFill
+            picture.layer.cornerRadius = radius
+            placeholder.show(seed: seed, side: story ? StoryRowMetrics.disc : Metrics.mark) { [weak self] in self?.picture.image = $0 }
+        case .image(let path, let thumbhash):
+            // A picture is a rounded square; in a story ring, a circle.
+            picture.isHidden = false
+            picture.contentMode = .scaleAspectFill
+            picture.layer.cornerRadius = radius
+            let pixels = Int((story ? StoryRowMetrics.disc : Metrics.mark) * 3)
+            let images = item.owner?.images
+            if let cached = images?.cachedPicture(path, thumbhash: thumbhash, pixels: pixels) {
+                picture.image = cached
+            } else {
+                picture.image = ThumbHashImages.image(thumbhash)
+                pictureJob = Task { [weak self, images] in
+                    guard let image = await images?.picture(path, thumbhash: thumbhash, pixels: pixels), !Task.isCancelled, let self else { return }
+                    ImageFade.show(image, in: picture, fade: true)
+                }
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        drawingView.frame = bounds
+        fill.frame = box
+        let frames = frames
+        var mark = frames.mark ?? .zero
+        ring.frame = frames.ring ?? .zero
+        if frames.ring != nil {
+            // On the disc: art and glyphs at their own size in its middle,
+            // a picture filling it.
+            let side: CGFloat? = switch row.mark {
+            case .clay, .happy, .seedling: StoryRowMetrics.plateArt
+            case .glyph: StoryRowMetrics.plateGlyph
+            default: nil
+            }
+            if let side { mark = mark.insetBy(dx: (mark.width - side) / 2, dy: (mark.height - side) / 2) }
+        }
+        seedling.frame = mark
+        picture.frame = mark
+        tile.frame = mark
+        corner.frame = frames.corner ?? .zero
+        titleOverlay?.frame = frames.label
+    }
+
+    override func applyPreparation(_ preparation: ListPreparation, width: Double, environment: RenderEnvironment) {
+        drawingView.applyPreparation(preparation, width: width, environment: environment)
+    }
+
+    override func update(width: Double, transition: ListTransition) -> Double { item.entry.size.height }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        corner.onScreen = window != nil
+        if window == nil { pressed = false }
+    }
+
+    // MARK: Touch
+
+    /// Only the row's box takes a touch: the gap above it and the margins
+    /// beside its card are the list's.
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        row.kind != .separator && box.contains(point)
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        stoppedGlide = item.owner?.isGliding ?? false
+        super.touchesBegan(touches, with: event)
+    }
+
+    @objc private func tapped(_ gesture: UITapGestureRecognizer) {
+        guard !stoppedGlide else { return }
+        item.owner?.tap(self, at: gesture.location(in: self))
+    }
+
+    @objc private func pressChanged(_ gesture: PressRecognizer) {
+        guard let owner = item.owner else { return }
+        let down = gesture.state == .began || gesture.state == .changed
+        pressed = down && !stoppedGlide && owner.lightsOnPress(row)
+        if gesture.state == .began, !stoppedGlide { owner.pressed(self) }
+    }
+
+    @objc private func held(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began, !stoppedGlide else { return }
+        item.owner?.openHold(self)
+    }
+
+    // MARK: VoiceOver
+
+    private func applyAccessibility() {
+        let row = row
+        isAccessibilityElement = row.kind != .separator
+        accessibilityLabel = row.kind == .separator ? nil : row.label
+        accessibilityIdentifier = "row:\(row.kind):\(row.label)"
+        var traits: UIAccessibilityTraits = row.kind == .section ? .header : row.kind == .separator ? .none : .button
+        if selected { traits.insert(.selected) }
+        accessibilityTraits = traits
+        let wears: String? = switch row.mark {
+        case .seedling: "seedling"
+        case .clay(let slug): slug
+        default: nil
+        }
+        let value = [row.isNew ? Strings.newRow : nil, wears].compactMap { $0 }
+        accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
+        if let story = row.story {
+            let changes = row.lineChanges.flatMap { $0.isEmpty ? nil : "+\($0.added) \u{2212}\($0.deleted)" }
+            accessibilityValue = [changes, row.statusLine, row.draft.map { "Draft: \($0)" }, story.unseen > 0 ? Strings.Stories.newStories(story.unseen) : nil]
+                .compactMap { $0 }.joined(separator: ", ")
+        }
+    }
+
+    override var accessibilityFrame: CGRect {
+        get { UIAccessibility.convertToScreenCoordinates(box, in: self) }
+        set { super.accessibilityFrame = newValue }
+    }
+
+    override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+        get { item.owner?.actions(for: self) }
+        set { super.accessibilityCustomActions = newValue }
+    }
+
+    override func accessibilityActivate() -> Bool {
+        guard row.kind != .section, row.kind != .separator, let owner = item.owner else { return false }
+        owner.tap(self, at: CGPoint(x: frames.label.midX, y: box.midY))
+        return true
+    }
+
+    // MARK: Motion
+
+    /// A row that just became new flashes its tint once, where the person can see it.
+    private func pulse() {
+        guard !UIAccessibility.isReduceMotionEnabled, !selected else { return }
+        let flash = UIColor(Palette.rowNewDot).withAlphaComponent(0.35)
+        let rest = UIColor(Palette.rowNew)
+        let fill = fill
+        fill.backgroundColor = rest
+        UIView.animateKeyframes(withDuration: Metrics.newPulseDuration, delay: 0.15, options: [.allowUserInteraction]) {
+            UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 0.25) { fill.backgroundColor = flash }
+            UIView.addKeyframe(withRelativeStartTime: 0.25, relativeDuration: 0.25) { fill.backgroundColor = rest }
+            UIView.addKeyframe(withRelativeStartTime: 0.5, relativeDuration: 0.25) { fill.backgroundColor = flash }
+            UIView.addKeyframe(withRelativeStartTime: 0.75, relativeDuration: 0.25) { fill.backgroundColor = rest }
+        }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Metrics.newPulseDuration + 0.15))
+            self?.applyFill()
+        }
+    }
+
+    /// The seedling grows into its picture where the person can see it;
+    /// elsewhere the picture just shows.
+    private func hatch(seed: String, into image: UIImage) {
+        guard let mark = frames.mark, HatchView.canPlay(in: self) else { return }
+        let hatch = HatchView(frame: mark)
+        picture.alpha = 0
+        insertSubview(hatch, aboveSubview: picture)
+        HatchHaptics.shared.play(size: mark.width)
+        hatch.play(seed: seed, image: image) { [weak self] in self?.picture.alpha = 1 }
+    }
+
+    // MARK: Tests
+
+    var fillColor: UIColor? { fill.backgroundColor }
+    var fillCorners: (radius: CGFloat, mask: CACornerMask) { (fill.layer.cornerRadius, fill.layer.maskedCorners) }
+    var tileColor: UIColor? { tile.isHidden ? nil : tile.backgroundColor }
+    var workingSignalRunning: Bool { corner.animating }
+}
+#endif

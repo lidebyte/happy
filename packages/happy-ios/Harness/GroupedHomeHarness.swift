@@ -74,7 +74,7 @@ private actor GroupedHomeTransport: AgentTransport {
             "taskMemberships": tasks.map { ["taskId": $0["id"]!] },
             "surfaces": Self.surfaces,
             "projects": [
-                ["id": "p1", "name": "happy", "status": "active", "orderKey": "a", "avatar": ["url": "/v0/projects/p1/avatar", "width": 64, "height": 64], "agents": [Self.agent("root", "Root chat")]],
+                ["id": "p1", "name": "happy", "status": "active", "orderKey": "a", "avatar": ["kind": "image", "source": "user", "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI"], "agents": [Self.agent("root", "Root chat")]],
                 ["id": "p2", "name": "website", "status": "active", "orderKey": "b", "agents": []],
             ],
             "workspaces": [
@@ -194,8 +194,8 @@ final class GroupedHomeHarness {
             // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
             try? await Task.sleep(for: .seconds(1.5))
-            guard let list = home?.view.firstSubview(of: SidebarView.self) else { return }
-            list.setContentOffset(CGPoint(x: 0, y: max(-list.contentInset.top, list.contentSize.height + list.contentInset.bottom - list.bounds.height)), animated: false)
+            guard let list = home?.view.firstSubview(of: SidebarList.self) else { return }
+            list.setContentOffsetY(max(-list.contentInsets.top, list.edge.contentSize.height + list.contentInsets.bottom - list.bounds.height))
         }
     }
 

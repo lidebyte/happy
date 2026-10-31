@@ -19,7 +19,7 @@ final class HomeViewController: UIViewController {
     private let context: AppContext
     /// The computer this screen always shows; nil to follow the choice.
     private let fixedAgentConnection: String?
-    private let sidebar = SidebarView()
+    private let sidebar = SidebarList()
     private let banner = BannerView()
     private let empty = EmptyView()
     private var session: Session?
@@ -64,8 +64,11 @@ final class HomeViewController: UIViewController {
     /// Every snapshot shown, for the screen around this one.
     var onSnapshot: ((Snapshot) -> Void)?
 
-    /// Home's list, under the bar: the scroll edge the bar shades.
-    var list: UIScrollView { sidebar }
+    /// The scroll edge the bar shades: it follows home's list.
+    var list: UIScrollView { sidebar.edge }
+
+    /// Home's list, under the bar.
+    var homeList: SidebarList { sidebar }
 
     /// Search's results over home, while something answers.
     var resultsList: UIScrollView? { search != nil ? resultsView.list : nil }
@@ -91,7 +94,6 @@ final class HomeViewController: UIViewController {
         // The conversation's own ground, light and dark; the list on it is
         // grouped, a quiet card per section, Happy's own card first.
         view.backgroundColor = UIColor(Palette.groupedGround)
-        sidebar.style = .grouped
         view.addSubview(sidebar)
         view.addSubview(storiesBand)
         stories.install(in: storiesBand)
@@ -114,7 +116,11 @@ final class HomeViewController: UIViewController {
         }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
-        sidebar.delegate = self
+        sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
+        sidebar.onScroll = { [weak self] in self?.listDidScroll() }
+        sidebar.onWillEndDragging = { [weak self] velocity, target in self?.stories.listWillEndDragging(velocity: velocity, target: &target) }
+        sidebar.onDidEndDragging = { [weak self] decelerate in self?.listDidEndDragging(decelerate: decelerate) }
+        sidebar.onDidEndDecelerating = { [weak self] in self?.listDidEndDecelerating() }
         stories.onInsetChange = { [weak self] change in self?.storiesMoved(change) }
         // Agent stories turn the conversations' rows into story rows.
         stories.onRings = { [weak self] _ in self?.showRows() }
@@ -380,21 +386,22 @@ final class HomeViewController: UIViewController {
         sidebar.frame = layout.content
         session?.warm.layOut(width: layout.content.width, environment: traitCollection.textEnvironment)
         let insets = UIEdgeInsets(layout.listInsets)
-        if sidebar.contentInset != insets {
-            let atTop = sidebar.contentOffset.y <= -sidebar.contentInset.top + 1
-            sidebar.contentInset = insets
-            sidebar.verticalScrollIndicatorInsets = UIEdgeInsets(layout.indicatorInsets)
+        let indicator = UIEdgeInsets(layout.indicatorInsets)
+        if sidebar.contentInsets != insets {
+            let atTop = sidebar.isAtTop
             switch storiesChange {
             case .held:
                 // The stories opened or closed under the finger: the list stays.
-                break
+                sidebar.setInsets(insets, indicator: indicator, keepsTop: false)
             case .animated:
                 // They opened or closed on their own: the list goes to its new top.
-                sidebar.contentOffset.y = -insets.top
+                sidebar.setInsets(insets, indicator: indicator, keepsTop: true)
             case .immediate, nil:
                 // A shrinking top (Stories turned off) leaves nothing scrolled past it.
-                if atTop || (!sidebar.isDragging && sidebar.contentOffset.y < -insets.top) { sidebar.contentOffset.y = -insets.top }
+                sidebar.setInsets(insets, indicator: indicator, keepsTop: atTop || (!sidebar.isDragging && sidebar.contentOffsetY < -insets.top))
             }
+        } else {
+            sidebar.setInsets(insets, indicator: indicator, keepsTop: false)
         }
         empty.frame = layout.empty
     }
@@ -510,27 +517,26 @@ final class HomeViewController: UIViewController {
     }
 }
 
-extension HomeViewController: UIScrollViewDelegate {
-    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+extension HomeViewController {
+    private func listWillBeginDragging() {
         stories.listWillBeginDragging()
         // Scrolling is being in the list: Prioritizing's batches wait.
         if let store = session?.store { Task { await store.attentionInput() } }
     }
 
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+    private func listDidScroll() {
         stories.listDidScroll()
+        #if DEBUG || HAPPY_FIXTURES
+        GymFrameMeter.noteScroll()
+        #endif
     }
 
-    func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
-        stories.listWillEndDragging(target: targetContentOffset)
-    }
-
-    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+    private func listDidEndDragging(decelerate: Bool) {
         stories.listDidEndDragging(decelerate: decelerate)
         if !decelerate { warmUp() }
     }
 
-    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+    private func listDidEndDecelerating() {
         stories.listDidEndDecelerating()
         warmUp()
     }
@@ -539,7 +545,6 @@ extension HomeViewController: UIScrollViewDelegate {
     /// ahead what is on screen and around it.
     private func warmUp() {
         guard let session, !snapshot.allRows.isEmpty else { return }
-        sidebar.layoutIfNeeded()
         let shown = sidebar.shownRows
         session.warm.update(rows: shown.isEmpty ? snapshot.rows : shown, visible: shown.isEmpty ? nil : sidebar.visibleRange, references: snapshot.references)
     }

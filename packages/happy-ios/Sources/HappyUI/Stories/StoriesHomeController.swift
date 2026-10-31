@@ -45,7 +45,7 @@ final class StoriesHomeController {
     /// The sidebar's rings, as last drawn.
     private(set) var rings: [String: StoryRing]?
     /// The list the stories open above.
-    weak var list: UIScrollView?
+    weak var list: (any StoriesList)?
     /// Home shows something else (no computer, one too old): no stories.
     var isSuppressed = false {
         didSet {
@@ -116,7 +116,7 @@ final class StoriesHomeController {
     /// How far the list sits below its top with the stories closed.
     private var pull: CGFloat {
         guard let list else { return 0 }
-        return -(list.contentOffset.y + list.contentInset.top - inset)
+        return -(list.offsetY + list.insetTop - inset)
     }
 
     private var listAtRest: Bool {
@@ -266,18 +266,19 @@ final class StoriesHomeController {
     /// The finger lifts: the room above the list becomes what the row
     /// wants, and a list let go of part way into the open row goes to it
     /// or past it, never stopping half way.
-    func listWillEndDragging(target: UnsafeMutablePointer<CGPoint>) {
+    /// `velocity`: the content's, points a millisecond, up positive;
+    /// `target`: where it would glide to, as a scroll view's `contentOffset.y`.
+    func listWillEndDragging(velocity: CGFloat, target: inout CGFloat) {
         dragging = false
         guard let list, isShown else { return }
         let current = pull
-        let closedTop = list.contentInset.top - inset
-        var resting = -(target.pointee.y + closedTop)
+        let closedTop = list.insetTop - inset
+        var resting = -(target + closedTop)
         // Let go above the top it had: it would have gone back to that top.
         let bouncing = current > inset && abs(resting - inset) < 1
         if bouncing { resting = current }
         // A list too short to scroll can't glide past its top: where a flick
         // up would have taken it, as a scroll view decelerates (0.998 a ms).
-        let velocity = -list.panGestureRecognizer.velocity(in: list).y / 1000
         if unlocked, !bouncing, abs(resting - inset) < 1, velocity > 0 {
             resting = min(resting, current - velocity * 499)
         }
@@ -291,7 +292,7 @@ final class StoriesHomeController {
         resting = StoriesHeaderLayout.resting(unlocked: unlocked, glide: resting)
         // Never past the top the room now has.
         resting = min(resting, inset)
-        target.pointee.y = -(resting + closedTop)
+        target = -(resting + closedTop)
     }
 
     func listDidEndDragging(decelerate: Bool) {
@@ -635,5 +636,16 @@ final class StoriesBandView: UIView {
         let hit = super.hitTest(point, with: event)
         return hit === self ? nil : hit
     }
+}
+
+/// The list the stories open above, as they read it.
+@MainActor
+protocol StoriesList: AnyObject {
+    /// Where the list is, as a scroll view's `contentOffset.y`.
+    var offsetY: CGFloat { get }
+    /// The room above its first row.
+    var insetTop: CGFloat { get }
+    var isDragging: Bool { get }
+    var isDecelerating: Bool { get }
 }
 #endif

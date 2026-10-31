@@ -32,7 +32,20 @@ every nested row is shown, and no row has a chevron.
    sessions. A worktree a subtask works in is listed once, under that
    subtask.
 
-Rows use the phone's own components (`SidebarView`, `RowView`). With agent
+Every project wears a face, as desktop's sidebar does: its picture (the
+person's or the one the daemon made, read at `/v0/projects/<id>/avatar`
+with its thumbhash first), the house for the home project, and while it has
+neither yet, the placeholder its id seeds (`SidebarRows.projectMark`).
+
+The list is `SidebarList`, on UltraView: `SidebarLayout`'s grouped cards
+cut into one slot per row (`SidebarLayout.slots`), laid out and drawn off
+the main thread (`SidebarItemDrawing`), with the marks, rings, fills and
+signals as live views over the bitmap (`SidebarItemView`). It draws what
+the grouped `SidebarView` drew (`HostedSidebarListTests` compares them
+pixel for pixel); `SidebarView` and `RowView` stay for search's
+results, a session's tree and proposals. UltraList is not a scroll view, so
+the bar's soft edge and the indicator follow `SidebarList.edge`, a scroll
+view holding the list that moves with it. With agent
 stories on, every bot's and task's row is a story row (`StoryRowViews`):
 the ring with its stories, the time, the agent's status line on two lines,
 and the corner signal. `SidebarRows.withStories` keeps the tree, unlike the

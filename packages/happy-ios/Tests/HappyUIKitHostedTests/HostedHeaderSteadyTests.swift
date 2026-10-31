@@ -223,7 +223,7 @@ final class HostedHeaderSteadyTests: XCTestCase {
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: navigation)
         defer { window.isHidden = true }
         window.layoutIfNeeded()
-        let sidebar = try XCTUnwrap(Self.subviews(SidebarView.self, in: home.view).first)
+        let sidebar = try XCTUnwrap(Self.subviews(SidebarList.self, in: home.view).first)
         let rows = (0..<30).map { Row(id: "s:\($0)", nodeId: "n\($0)", kind: .space, label: "Work \($0)", mark: .happy, agentId: "a\($0)", spaceId: "s\($0)") }
         let content = try XCTUnwrap(home.children.compactMap { $0 as? HomeViewController }.first)
         var snapshot = HomeSnapshot()
@@ -232,10 +232,12 @@ final class HostedHeaderSteadyTests: XCTestCase {
         snapshot.allRows = rows
         try await Task.sleep(for: .milliseconds(300))
         content.applyConnection(snapshot)
+        await sidebar.settle()
+        try await Task.sleep(for: .milliseconds(200))
         window.layoutIfNeeded()
         let switcher = try XCTUnwrap(home.navigationItem.leftBarButtonItem?.customView as? AccountSwitcherButton)
         let name = try XCTUnwrap(Self.subviews(StyledLabel.self, in: switcher).first { $0.string == switcher.title })
-        let row = try XCTUnwrap(sidebar.subviews.compactMap { $0 as? RowView }.first { $0.row?.id == "s:0" })
+        let row = try XCTUnwrap(sidebar.view(for: "s:0"))
         func frames() -> [CGRect] {
             window.layoutIfNeeded()
             return [navigation.navigationBar, switcher, name, sidebar, row].map { $0.convert($0.bounds, to: window) }
@@ -244,8 +246,8 @@ final class HostedHeaderSteadyTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(250))
         let original = frames()
         metrics("home-frames-bar-switcher-title-sidebar-firstRow", original)
-        let inset = sidebar.contentInset
-        let offset = sidebar.contentOffset
+        let inset = sidebar.contentInsets
+        let offset = sidebar.contentOffsetY
         capture(window, "7-agent-home-online")
         for state in Strings.HeaderStatus.State.allCases + Strings.HeaderStatus.State.allCases.reversed() {
             home.headerState = state
@@ -255,8 +257,8 @@ final class HostedHeaderSteadyTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(80))
             XCTAssertEqual(Self.subviews(StyledLabel.self, in: switcher).count, 1)
             XCTAssertEqual(frames(), original, "mid-fade at \(state)")
-            XCTAssertEqual(sidebar.contentInset, inset)
-            XCTAssertEqual(sidebar.contentOffset, offset)
+            XCTAssertEqual(sidebar.contentInsets, inset)
+            XCTAssertEqual(sidebar.contentOffsetY, offset)
             XCTAssertEqual(sidebar.rows.map(\.id), rows.map(\.id))
             try await Task.sleep(for: .milliseconds(150))
             XCTAssertEqual(frames(), original, "settled at \(state)")

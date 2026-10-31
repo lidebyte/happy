@@ -264,7 +264,7 @@ enum StoryRowText {
 /// so it stays crisp at every scale, in the status's ink at 55%.
 final class EmptyMarkView: UIImageView {
     /// 49 × 22 cells, the ground on the last row.
-    static let scene = [
+    nonisolated static let scene = [
         "..........########...............................",
         ".........##.#######..............................",
         ".........##########..............................",
@@ -315,7 +315,7 @@ final class EmptyMarkView: UIImageView {
     }
 
     /// The scene in whole pixels: each pixel takes the cell under its centre.
-    static func image(size: CGSize, scale: CGFloat) -> UIImage {
+    nonisolated static func image(size: CGSize, scale: CGFloat) -> UIImage {
         let width = Int((size.width * scale).rounded())
         let height = Int((size.height * scale).rounded())
         let rows = scene.count
