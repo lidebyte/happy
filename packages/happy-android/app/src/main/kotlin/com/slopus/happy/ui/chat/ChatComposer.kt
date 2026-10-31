@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.KeyEvent
@@ -182,7 +185,11 @@ fun ChatComposer(
     showDetails: Boolean = true,
     /** Where the card lands, for what floats just above it (the scroll-to-bottom button). */
     onPanelPositioned: ((LayoutCoordinates) -> Unit)? = null,
+    /** The input takes focus, and with it the keyboard, as it first shows. */
+    autoFocus: Boolean = false,
 ) {
+    val focus = remember { FocusRequester() }
+    if (autoFocus) LaunchedEffect(focus) { runCatching { focus.requestFocus() } }
     val colors = HappyTheme.colors
     var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
     val placement = cursor?.placement
@@ -251,6 +258,7 @@ fun ChatComposer(
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
                     modifier = Modifier
+                        .focusRequester(focus)
                         .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true || onKey(it) }
                         .testTag(ComposerTags.INPUT)
                         .fillMaxWidth()
