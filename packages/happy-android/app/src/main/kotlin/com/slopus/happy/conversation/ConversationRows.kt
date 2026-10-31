@@ -60,8 +60,8 @@ sealed interface ConversationRow {
     /** A picture inline in a message. */
     data class Picture(override val key: String, val image: Block.Image) : ConversationRow
 
-    /** Pictures, videos and files a tool presented, read on demand. */
-    data class Media(override val key: String, val items: List<MediaRef>) : ConversationRow
+    /** Pictures, videos and files a tool presented, read on demand; [columns] as the tool asked (0: justified rows). */
+    data class Media(override val key: String, val items: List<MediaRef>, val columns: Int = 0) : ConversationRow
 
     /** An artifact a tool made or changed. */
     data class Artifact(override val key: String, val artifactId: String, val title: String, val type: String?) : ConversationRow
@@ -152,7 +152,7 @@ class ConversationRowBuilder {
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     tool(null, null)
                 } else {
-                    listOf(ConversationRow.Media(key, p.items.mapIndexed { index, item -> MediaRef(call.id, index, item) }))
+                    listOf(ConversationRow.Media(key, p.items.mapIndexed { index, item -> MediaRef(call.id, index, item) }, p.columns))
                 }
                 is Presentation.Artifact -> listOf(ConversationRow.Artifact(key, p.artifactId, p.title.orEmpty(), p.artifactType))
                 is Presentation.Command -> tool(p.command, buildJsonObject { put("command", p.command); put("cmd", p.command) })
